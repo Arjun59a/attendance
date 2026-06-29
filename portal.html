@@ -16,7 +16,7 @@
         .btn-scan { background: #00adb5; color: #fff; }
         .btn-sync { background: #28a745; color: #fff; display: none; }
         #reader { width: 100%; margin-top: 15px; border-radius: 8px; overflow: hidden; display: none; }
-        .status { margin-top: 15px; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; display: none; }
+        .status { margin-top: 15px; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; display: none; word-wrap: break-word; }
         .status.success { background: rgba(40, 167, 69, 0.2); color: #28a745; border: 1px solid #28a745; }
         .status.error { background: rgba(220, 53, 69, 0.2); color: #dc3545; border: 1px solid #dc3545; }
     </style>
@@ -59,23 +59,20 @@
 
 <script>
     // ⚠️ PASTE YOUR COPIED GOOGLE APPS SCRIPT WEB APP URL HERE
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwTuNBRXb6RCq9XSld2Sye4zMlE3BFmnIw1bpVQ0IMd-hMEbNNQEyfMw6BE4sMgzx3-dQ/exec";
-
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzoDNeJsZf74UbFvWcdwO91bTvE1M4YMfq4DaghsdAD8W4CdsBoK6tKps_qGSRg1PrNaw/exec";
     let scannedToken = "";
     let html5QrcodeScanner = null;
 
-    // Isolate a permanent fingerprint token within the browser session context
+    // Generate hardware/fingerprint tag for anti-proxy checking
     if (!localStorage.getItem('device_fingerprint')) {
-        localStorage.setItem('device_fingerprint', 'DEV-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15));
+        localStorage.setItem('device_fingerprint', 'DEV-' + Math.random().toString(36).substring(2, 15));
     }
     const deviceId = localStorage.getItem('device_fingerprint');
 
-    // Immediate local lock preventing secondary attempts
+    // Soft-check local lockout configuration
     const todayStr = new Date().toISOString().split('T')[0];
     if (localStorage.getItem('last_submission_date') === todayStr) {
-        showStatus("You have already recorded attendance from this device today!", "error");
-        document.getElementById('scanBtn').disabled = true;
-        document.getElementById('scanBtn').style.background = '#555';
+        showStatus("Notice: This device already has a local submission record for today.", "success");
     }
 
     function showStatus(text, type) {
@@ -87,15 +84,16 @@
 
     function startScanner() {
         document.getElementById('reader').style.display = 'block';
-        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
         html5QrcodeScanner.render(onScanSuccess, onScanFailure);
     }
 
     function onScanSuccess(decodedText) {
         scannedToken = decodedText;
-        html5QrcodeScanner.clear();
+        if (html5QrcodeScanner) {
+            html5QrcodeScanner.clear().catch(err => console.log(err));
+        }
         document.getElementById('reader').style.display = 'none';
-        
         showStatus("✓ QR Captured Successfully! Ready to Sync.", "success");
         document.getElementById('syncBtn').style.display = 'block';
     }
@@ -122,19 +120,25 @@
             deviceId: deviceId
         };
 
-        fetch(GOOGLE_SCRIPT_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams(payload)
+        const queryString = new URLSearchParams(payload).toString();
+
+        // Switching to cross-origin standard GET method for reliable message intercepting
+        fetch(GOOGLE_SCRIPT_URL + "?" + queryString, {
+            method: 'GET'
         })
-        .then(() => {
-            showStatus("🎉 Attendance Successfully Logged into Spreadsheet!", "success");
-            document.getElementById('syncBtn').style.display = 'none';
-            localStorage.setItem('last_submission_date', todayStr);
+        .then(response => response.text())
+        .then(responseText => {
+            console.log("Server Response:", responseText);
+            if (responseText.trim() === "SUCCESS") {
+                showStatus("🎉 Attendance Successfully Logged into Spreadsheet!", "success");
+                document.getElementById('syncBtn').style.display = 'none';
+                localStorage.setItem('last_submission_date', todayStr);
+            } else {
+                showStatus("🛑 Registration Denied: " + responseText, "error");
+            }
         })
         .catch(err => {
-            showStatus("Network sync failed. Please try again.", "error");
+            showStatus("Network sync configuration mismatch. Check implementation constraints.", "error");
             console.error(err);
         });
     }
