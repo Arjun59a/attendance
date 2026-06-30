@@ -2,242 +2,63 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Attendance Portal</title>
-    <script src="html5-qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .card { background: #1e1e1e; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 100%; max-width: 400px; box-sizing: border-box; }
-        h2 { text-align: center; margin-top: 0; color: #fff; }
-        label { display: block; margin: 12px 0 6px; font-weight: 600; font-size: 14px; color: #aaa; }
-        input, select { width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #444; border-radius: 6px; color: #fff; box-sizing: border-box; font-size: 15px; margin-bottom: 5px; }
-        input:focus, select:focus { border-color: #00adb5; outline: none; }
-        input:disabled, select:disabled { background: #1a1a1a; color: #777; border-color: #333; cursor: not-allowed; }
-        button { width: 100%; padding: 12px; margin-top: 15px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .btn-scan { background: #00adb5; color: #fff; }
-        .btn-scan:disabled { background: #444; color: #888; cursor: not-allowed; }
-        .btn-sync { background: #28a745; color: #fff; }
-        #reader { width: 100%; margin-top: 15px; border-radius: 8px; overflow: hidden; display: none; }
-        .status { margin-top: 15px; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; display: none; word-wrap: break-word; }
-        .status.success { background: rgba(40, 167, 69, 0.2); color: #28a745; border: 1px solid #28a745; }
-        .status.error { background: rgba(220, 53, 69, 0.2); color: #dc3545; border: 1px solid #dc3545; }
-        .config-badge { font-size: 11px; color: #666; text-align: center; margin-top: 10px; display: block; }
+        body { font-family: sans-serif; background: #121212; color: #fff; padding: 20px; display: flex; justify-content: center; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 10px; width: 100%; max-width: 400px; }
+        input, button { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: none; }
+        .btn-scan { background: #00adb5; color: white; cursor: pointer; }
+        .btn-sync { background: #28a745; color: white; cursor: pointer; }
     </style>
 </head>
 <body>
-
 <div class="card">
     <h2>Student Portal</h2>
-    
-    <label for="dept">Department</label>
-    <select id="dept" onchange="saveProfile()">
-        <option value="IT">Information Technology (IT)</option>
-        <option value="CE">Computer Engineering (CE)</option>
-        <option value="CSE">Computer Science & Eng. (CSE)</option>
-        <option value="ICT">ICT</option>
-    </select>
-
-    <label for="semester">Semester</label>
-    <select id="semester" onchange="saveProfile()">
-        <option value="Sem 1">Semester 1</option>
-        <option value="Sem 2">Semester 2</option>
-        <option value="Sem 3">Semester 3</option>
-        <option value="Sem 4">Semester 4</option>
-        <option value="Sem 5" selected>Semester 5</option>
-        <option value="Sem 6">Semester 6</option>
-        <option value="Sem 7">Semester 7</option>
-        <option value="Sem 8">Semester 8</option>
-    </select>
-
-    <label for="enrollment">Enrollment / Roll Number</label>
-    <input type="text" id="enrollment" placeholder="e.g., 24012021073" oninput="saveProfile()" required>
-
-    <button class="button btn-scan" id="scanBtn" onclick="startScanner()">📷 Scan Classroom QR</button>
-    <div id="reader"></div>
-
-    <div id="statusBox" class="status"></div>
-
-    <button class="button btn-sync" id="syncBtn" style="display: none;" onclick="syncToCloud()">☁️ Sync Attendance to Cloud</button>
-    <button id="resetBtn" style="margin-top: 15px; background: transparent; color: #ff4141; border: none; padding: 5px; font-size: 12px; cursor: pointer; text-decoration: underline;" onclick="clearSystemMemory()">Clear Local Cached Form Data</button>
-    
-    <div id="configText" class="config-badge">Target System: Monitoring Parameters...</div>
+    <input type="text" id="enrollment" placeholder="Enrollment Number">
+    <button class="btn-scan" id="scanBtn" onclick="startScanner()">📷 Scan QR</button>
+    <div id="reader" style="display:none"></div>
+    <button class="btn-sync" id="syncBtn" style="display:none" onclick="syncToCloud()">☁️ Sync Attendance</button>
+    <div id="status"></div>
 </div>
 
 <script>
-    const DEFAULT_RPC = "https://script.google.com/macros/s/AKfycbyFM39sJmW2fhOCEdWW3FbEzsLtVFelgfLRhDClWJ1tue2EBMSpO6T1GocOb5QvNmI93w/exec";
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbybmhLi5kYtCGu87DBPFm0Cl2GxLCdkjDQt0HL5fIG1p6jRuW6V5ZMcfpbYKx6KQ2iwLw/exec";
+    if (!localStorage.getItem('device_id')) localStorage.setItem('device_id', 'DEV-' + Math.random().toString(36).substr(2, 9));
     
-    const urlParams = new URLSearchParams(window.location.search);
-    let GOOGLE_SCRIPT_URL = urlParams.get('rpc') || localStorage.getItem('saved_rpc_target') || DEFAULT_RPC;
-    localStorage.setItem('saved_rpc_target', GOOGLE_SCRIPT_URL);
-
-    let html5QrcodeScanner = null;
-
-    if (!localStorage.getItem('device_fingerprint')) {
-        localStorage.setItem('device_fingerprint', 'DEV-' + Math.random().toString(36).substring(2, 15));
-    }
-    const deviceId = localStorage.getItem('device_fingerprint');
-
-    window.addEventListener('load', () => {
-        try {
-            if(localStorage.getItem('cached_enrollment')) document.getElementById('enrollment').value = localStorage.getItem('cached_enrollment');
-            if(localStorage.getItem('cached_dept')) document.getElementById('dept').value = localStorage.getItem('cached_dept');
-            if(localStorage.getItem('cached_semester')) document.getElementById('semester').value = localStorage.getItem('cached_semester');
-
-            document.getElementById('configText').innerText = "✓ Backend Target Linked";
-
-            const savedToken = localStorage.getItem('buffered_token');
-            const savedTimestamp = parseInt(localStorage.getItem('buffered_timestamp') || '0');
-            const currentTimestamp = Math.floor(Date.now() / 1000);
-            
-            if (savedToken && (currentTimestamp - savedTimestamp < 300)) {
-                toggleFormInputs(true);
-                document.getElementById('scanBtn').disabled = true;
-                showStatus("✓ Unsent Ticket Located! Tap below to sync your attendance now.", "success");
-                document.getElementById('syncBtn').style.display = 'block';
-            } else {
-                localStorage.removeItem('buffered_token');
-                localStorage.removeItem('buffered_timestamp');
-                toggleFormInputs(false);
-                document.getElementById('scanBtn').disabled = false;
-                document.getElementById('syncBtn').style.display = 'none';
-            }
-        } catch(e) {
-            console.error(e);
-            toggleFormInputs(false);
-            document.getElementById('scanBtn').disabled = false;
+    window.onload = () => {
+        if (localStorage.getItem('submitted_today') === new Date().toDateString()) {
+            document.getElementById('scanBtn').disabled = true;
+            document.getElementById('status').innerText = "✅ Attendance already submitted today.";
         }
-    });
-
-    function toggleFormInputs(disabledStatus) {
-        document.getElementById('enrollment').disabled = disabledStatus;
-        document.getElementById('dept').disabled = disabledStatus;
-        document.getElementById('semester').disabled = disabledStatus;
-    }
-
-    function saveProfile() {
-        localStorage.setItem('cached_enrollment', document.getElementById('enrollment').value.trim());
-        localStorage.setItem('cached_dept', document.getElementById('dept').value);
-        localStorage.setItem('cached_semester', document.getElementById('semester').value);
-    }
-
-    function showStatus(text, type) {
-        const box = document.getElementById('statusBox');
-        box.innerText = text;
-        box.className = `status ${type}`;
-        box.style.display = 'block';
-    }
+    };
 
     function startScanner() {
-        if (typeof Html5QrcodeScanner === 'undefined') {
-            showStatus("🛑 Scanner Engine Asset Missing offline! Check file placement.", "error");
-            return;
-        }
-        
-        try {
-            document.getElementById('reader').style.display = 'block';
-            toggleFormInputs(false); 
-            
-            html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
-            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-        } catch(err) {
-            showStatus("🛑 Initialization Exception caught.", "error");
-            console.error(err);
-        }
-    }
-
-    function onScanSuccess(decodedText) {
-        if (html5QrcodeScanner) {
-            html5QrcodeScanner.clear().catch(err => console.log(err));
-        }
-        document.getElementById('reader').style.display = 'none';
-
-        const localScanTimestamp = Math.floor(Date.now() / 1000);
-        let extractedToken = decodedText.trim();
-
-        if (decodedText.includes("token=")) {
-            try {
-                const scannedUrl = new URL(decodedText);
-                extractedToken = scannedUrl.searchParams.get('token');
-            } catch (e) { console.log(e); }
-        }
-
-        if (extractedToken && extractedToken.length > 0) {
-            localStorage.setItem('buffered_token', extractedToken);
-            localStorage.setItem('buffered_timestamp', localScanTimestamp);
-
-            toggleFormInputs(true);
-            document.getElementById('scanBtn').disabled = true;
-            showStatus("✓ Classroom scan captured and sealed locally! Tap sync when you have network connection.", "success");
+        document.getElementById('reader').style.display = 'block';
+        const scanner = new Html5Qrcode("reader");
+        scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (data) => {
+            scanner.stop();
+            document.getElementById('reader').style.display = 'none';
+            localStorage.setItem('buffered_token', data.split('|')[0]);
+            localStorage.setItem('buffered_start', data.split('|')[2]);
             document.getElementById('syncBtn').style.display = 'block';
-        } else {
-            showStatus("🛑 Read Error: Invalid QR Token structure values.", "error");
-        }
-    }
-
-    function onScanFailure(error) {}
-
-    function syncToCloud() {
-        const enrollment = document.getElementById('enrollment').value.trim();
-        const dept = document.getElementById('dept').value;
-        const sem = document.getElementById('semester').value;
-
-        if (!enrollment) {
-            alert("Please provide your enrollment code before submitting.");
-            return;
-        }
-
-        if (!navigator.onLine) {
-            showStatus("🛑 Device Offline: Your token remains safely buffered locally, but 5G/Wi-Fi is required to push data to Google Sheets!", "error");
-            return;
-        }
-
-        showStatus("Transmitting attendance payload record to Google Sheets matrix...", "success");
-
-        const payload = {
-            enrollment: enrollment,
-            department: dept,
-            semester: sem,
-            token: localStorage.getItem('buffered_token'),
-            scanTime: localStorage.getItem('buffered_timestamp'),
-            deviceId: deviceId
-        };
-
-        const queryString = new URLSearchParams(payload).toString();
-
-        fetch(GOOGLE_SCRIPT_URL + "?" + queryString, { method: 'GET' })
-        .then(response => response.text())
-        .then(responseText => {
-            if (responseText.trim() === "SUCCESS") {
-                showStatus("🎉 Attendance Successfully Logged into Spreadsheet Column Matrix!", "success");
-                document.getElementById('syncBtn').style.display = 'none';
-                localStorage.removeItem('buffered_token');
-                localStorage.removeItem('buffered_timestamp');
-                toggleFormInputs(false);
-                document.getElementById('scanBtn').disabled = false;
-            } else {
-                showStatus("🛑 Registration Denied: " + responseText, "error");
-            }
-        })
-        .catch(err => {
-            showStatus("Network socket timeout exception. Tap sync again.", "error");
-            console.error(err);
+            document.getElementById('status').innerText = "✓ Scanned! Sync now.";
         });
     }
 
-    function clearSystemMemory() {
-        localStorage.clear();
-        toggleFormInputs(false);
-        document.getElementById('scanBtn').disabled = false;
-        document.getElementById('syncBtn').style.display = 'none';
-        document.getElementById('statusBox').style.display = 'none';
-        location.reload();
-    }
-
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('Offline Engine Active'))
-                .catch(err => console.log('Service Worker Failed:', err));
+    function syncToCloud() {
+        const payload = {
+            enrollment: document.getElementById('enrollment').value,
+            token: localStorage.getItem('buffered_token'),
+            start: localStorage.getItem('buffered_start'),
+            deviceId: localStorage.getItem('device_id')
+        };
+        fetch(GOOGLE_SCRIPT_URL + "?" + new URLSearchParams(payload))
+        .then(res => res.text()).then(txt => {
+            if (txt.includes("SUCCESS")) {
+                localStorage.setItem('submitted_today', new Date().toDateString());
+                alert("Logged!"); location.reload();
+            } else { alert(txt); }
         });
     }
 </script>
