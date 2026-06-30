@@ -6,16 +6,15 @@ import cv2
 import numpy as np
 
 SECRET_SALT = "GanpatUniv_IT_Sem5_2026_SecureKey"
-TIME_WINDOW_SECONDS = 3
+TIME_WINDOW_SECONDS = 1200  # 20 Minutes expiry
 
 def live_qr_broadcaster():
     cv2.namedWindow("CLASSROOM ATTENDANCE GATEWAY", cv2.WINDOW_NORMAL)
     while True:
-        # Strict UTC time calculation
         current_epoch = calendar.timegm(time.gmtime())
         current_bracket = current_epoch // TIME_WINDOW_SECONDS
         
-        # Consistent concatenation
+        # Raw message construction
         raw_message = (SECRET_SALT + "_" + str(current_bracket)).encode('utf-8')
         secure_token = hashlib.sha256(raw_message).hexdigest()[:16]
         
