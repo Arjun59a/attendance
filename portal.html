@@ -1,54 +1,80 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Smart Attendance</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Attendance Portal</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; background: #121212; color: #fff; padding: 20px; text-align: center; }
-        .card { background: #1e1e1e; padding: 20px; border-radius: 10px; max-width: 400px; margin: auto; }
-        input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: none; }
-        .btn-scan { background: #00adb5; color: #fff; }
-        .btn-sync { background: #28a745; color: #fff; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #121212; color: #ffffff; margin: 0; padding: 20px; display: flex; justify-content: center; min-height: 100vh; }
+        .card { background-color: #1e1e1e; padding: 25px; border-radius: 20px; width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; }
+        h2 { color: #00adb5; }
+        input { width: 100%; padding: 15px; margin: 10px 0; background-color: #2a2a2a; border: 1px solid #444; border-radius: 12px; color: #fff; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 15px; margin: 10px 0; border-radius: 12px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; }
+        .btn-scan { background-color: #00adb5; color: white; }
+        .btn-sync { background-color: #28a745; color: white; }
+        #reader { width: 100%; margin-top: 15px; border-radius: 12px; overflow: hidden; }
     </style>
 </head>
 <body>
+
 <div class="card">
-    <h3>Attendance Portal</h3>
-    <input type="text" id="enrollment" placeholder="Enrollment Number">
-    <button class="btn-scan" onclick="startScanner()">📷 Scan QR</button>
+    <h2>Attendance Portal</h2>
+    <input type="text" id="enrollment" placeholder="Enter Enrollment Number">
+    <button class="btn-scan" onclick="startScanner()">📷 Scan Classroom QR</button>
     <div id="reader" style="display:none"></div>
-    <button class="btn-sync" id="syncBtn" style="display:none" onclick="sync()">☁️ Sync to Cloud</button>
-    <div id="status"></div>
+    <button class="btn-sync" id="syncBtn" style="display:none" onclick="syncToCloud()">☁️ Sync to Cloud</button>
+    <div id="status" style="margin-top: 15px; color: #aaa; font-size: 14px;"></div>
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys9GgaykhMsw0TGs-s76qv3_PtySkRnALWbZxNiXdO1cDEu1c0abp0hXQ96ZccQYOcmA/exec";
+    // Configuration
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzR6Jq-Z-fiZrHGZ8OQrVTRxgYiDv55BYtSzH0J79CPMTAVl5Z-DYliaiWNUdDNW6_P3A/exec";
     
-    // Auto-generate DeviceID if not exists
-    if (!localStorage.getItem('dev_id')) localStorage.setItem('dev_id', 'D-' + Math.random().toString(36).substr(2, 9));
+    // Maintain a permanent Device Identity
+    if (!localStorage.getItem('device_id')) {
+        localStorage.setItem('device_id', 'DEV-' + Math.random().toString(36).substring(2, 15));
+    }
+    const deviceId = localStorage.getItem('device_id');
 
     function startScanner() {
         document.getElementById('reader').style.display = 'block';
         const scanner = new Html5Qrcode("reader");
-        scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (data) => {
-            scanner.stop();
-            const p = data.split('|');
-            localStorage.setItem('t', p[0]); localStorage.setItem('s', p[2]);
-            localStorage.setItem('e', p[3]); localStorage.setItem('r', p[4]);
-            document.getElementById('syncBtn').style.display = 'block';
-            document.getElementById('status').innerText = "✓ Captured! Sync now.";
-        });
+        
+        scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, 
+            (decodedText) => {
+                scanner.stop();
+                document.getElementById('reader').style.display = 'none';
+                
+                // Parse the payload explicitly
+                const dataParts = decodedText.split('|');
+                localStorage.setItem('token', dataParts[0]);
+                localStorage.setItem('start', dataParts[2]);
+                localStorage.setItem('end', dataParts[3]);
+                localStorage.setItem('status', dataParts[4]);
+                
+                document.getElementById('syncBtn').style.display = 'block';
+                document.getElementById('status').innerText = "✓ Scan Captured! Ready to Sync.";
+            },
+            (error) => { console.log("Scanner running..."); }
+        );
     }
 
-    function sync() {
-        const p = new URLSearchParams({
+    function syncToCloud() {
+        const payload = {
             enrollment: document.getElementById('enrollment').value,
-            token: localStorage.getItem('t'), start: localStorage.getItem('s'),
-            end: localStorage.getItem('e'), isRunning: localStorage.getItem('r'),
-            deviceId: localStorage.getItem('dev_id')
-        });
-        fetch(SCRIPT_URL + "?" + p).then(r => r.text()).then(t => alert(t));
+            token: localStorage.getItem('token'),
+            start: localStorage.getItem('start'),
+            end: localStorage.getItem('end'),
+            isRunning: localStorage.getItem('status'),
+            deviceId: deviceId
+        };
+        
+        const params = new URLSearchParams(payload).toString();
+        fetch(GOOGLE_SCRIPT_URL + "?" + params)
+            .then(response => response.text())
+            .then(text => alert("Server Response: " + text))
+            .catch(err => alert("Sync Failed. Please check connection."));
     }
 </script>
 </body>
