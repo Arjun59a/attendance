@@ -1,4 +1,5 @@
 import time
+import calendar
 import hashlib
 import qrcode
 import cv2
@@ -15,7 +16,8 @@ def live_qr_broadcaster():
     cv2.namedWindow("CLASSROOM ATTENDANCE GATEWAY", cv2.WINDOW_NORMAL)
     
     while True:
-        current_epoch = int(time.time())
+        # Use calendar.timegm(time.gmtime()) for pure UTC consistency across all servers
+        current_epoch = calendar.timegm(time.gmtime())
         current_bracket = current_epoch // TIME_WINDOW_SECONDS
         
         raw_message = f"{SECRET_SALT}_{current_bracket}".encode('utf-8')
