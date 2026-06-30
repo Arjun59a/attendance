@@ -1,22 +1,24 @@
 import hashlib
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import qrcode
 
 SECRET_SALT = "CHANGE_ME_TO_A_LONG_RANDOM_SECRET"
 BRACKET_SECONDS = 3
 OUTPUT_FILE = "attendance_qr.png"
 
-SESSIONS = [
-    {
-        "id": "CLASS-01",
-        "start": "2026-06-30T00:00:00Z",
-        "end": "2026-07-01T23:59:59Z",
-        "running": "0"
-    }
-]
+SESSION_ID = "CLASS-01"
+CLASS_DURATION_MINUTES = 60
 
-ACTIVE_SESSION_INDEX = 0
+session_start = datetime.now(timezone.utc)
+session_end = session_start + timedelta(minutes=CLASS_DURATION_MINUTES)
+
+SESSION = {
+    "id": SESSION_ID,
+    "start": session_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "end": session_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "running": "0"
+}
 
 def current_bracket():
     return int(datetime.now(timezone.utc).timestamp()) // BRACKET_SECONDS
@@ -45,14 +47,20 @@ def write_qr(payload):
     img = qrcode.make(payload)
     img.save(OUTPUT_FILE)
 
-last = ""
-session = SESSIONS[ACTIVE_SESSION_INDEX]
+def india_time(dt):
+    return (dt + timedelta(hours=5, minutes=30)).strftime("%d-%m-%Y %I:%M:%S %p")
 
-print("Broadcasting:", session["id"])
+print("Session ID:", SESSION_ID)
+print("Session started UTC:", SESSION["start"])
+print("Session ends UTC:", SESSION["end"])
+print("India start time:", india_time(session_start))
+print("India end time:", india_time(session_end))
 print("QR file:", OUTPUT_FILE)
 
+last = ""
+
 while True:
-    payload = payload_for(session)
+    payload = payload_for(SESSION)
     if payload != last:
         write_qr(payload)
         print("QR updated:", payload)
