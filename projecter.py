@@ -5,8 +5,8 @@ import cv2
 import numpy as np
 
 # 🟢 CONFIGURATION SETTINGS
-# Replace this string with your live production GitHub Pages URL
-GITHUB_PORTAL_URL = "https://Arjun59a.github.io/attendance/portal.html"
+# Replace this string with your live production GitHub Pages URL folder link path
+GITHUB_PORTAL_URL = "https://arjunthakor.github.io/smart-attendance/portal.html"
 SECRET_SALT = "GanpatUniv_IT_Sem5_2026_SecureKey"
 TIME_WINDOW_SECONDS = 3
 
@@ -18,7 +18,7 @@ def generate_secure_embedded_url(faculty_script_url):
     raw_message = f"{SECRET_SALT}_{current_bracket}".encode('utf-8')
     secure_token = hashlib.sha256(raw_message).hexdigest()[:16]
     
-    # Embed parameters cleanly into a single unified routing path
+    # Embed parameter mappings directly inside a predictable, clean URL structure
     dynamic_student_link = f"{GITHUB_PORTAL_URL}?rpc={faculty_script_url}&token={secure_token}"
     return dynamic_student_link
 
@@ -48,6 +48,6 @@ def live_qr_broadcaster(faculty_script_url):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    # The Apps Script deployment link copied from the Google Spreadsheet
+    # The live deployment production link copied from your Google Spreadsheet macro editor
     ACTIVE_FACULTY_EXEC_URL = "https://script.google.com/macros/s/AKfycbwW2TP9sig_QQCBgDaLC5Jc5PMy5Ll6Us6sDt-pxj-zaK8uVizk2Irzf5XVsMwlNq4vyg/exec"
     live_qr_broadcaster(ACTIVE_FACULTY_EXEC_URL)

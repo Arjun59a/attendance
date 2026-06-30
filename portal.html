@@ -61,7 +61,14 @@
 
 <script>
     const urlParams = new URLSearchParams(window.location.search);
-    const GOOGLE_SCRIPT_URL = urlParams.get('rpc'); 
+    let GOOGLE_SCRIPT_URL = urlParams.get('rpc'); 
+
+    // Auto-Saves deployment route targeting to prevent offline link failures
+    if (GOOGLE_SCRIPT_URL) {
+        localStorage.setItem('saved_rpc_target', GOOGLE_SCRIPT_URL);
+    } else {
+        GOOGLE_SCRIPT_URL = localStorage.getItem('saved_rpc_target');
+    }
 
     let html5QrcodeScanner = null;
 
@@ -72,7 +79,7 @@
 
     if (!GOOGLE_SCRIPT_URL) {
         const alertBox = document.getElementById('setupAlert');
-        alertBox.innerText = "🛑 Configuration Mismatch: Missing active deployment target link parameter pointer.";
+        alertBox.innerText = "🛑 Configuration Mismatch: Missing deployment targets. Please scan your instructor's entry onboarding link.";
         alertBox.style.display = "block";
         document.getElementById('scanBtn').disabled = true;
     }
@@ -104,23 +111,30 @@
         }
         document.getElementById('reader').style.display = 'none';
 
-        try {
-            const scannedUrl = new URL(decodedText);
-            const extractedToken = scannedUrl.searchParams.get('token');
-            const localScanTimestamp = Math.floor(Date.now() / 1000);
+        const localScanTimestamp = Math.floor(Date.now() / 1000);
+        let extractedToken = decodedText.trim();
 
-            if (extractedToken) {
-                localStorage.setItem('buffered_token', extractedToken);
-                localStorage.setItem('buffered_timestamp', localScanTimestamp);
-
-                document.getElementById('scanBtn').disabled = true;
-                showStatus("✓ Scan captured from projector and sealed locally! Tap sync whenever your network status is clear.", "success");
-                document.getElementById('syncBtn').style.display = 'block';
-            } else {
-                showStatus("🛑 Read Error: Invalid QR Code profile format structure.", "error");
+        if (decodedText.includes("http://") || decodedText.includes("https://")) {
+            try {
+                const scannedUrl = new URL(decodedText);
+                const tokenParam = scannedUrl.searchParams.get('token');
+                if (tokenParam) {
+                    extractedToken = tokenParam;
+                }
+            } catch (e) {
+                console.log("Failed parsing URL parameters, treating as raw token.");
             }
-        } catch (e) {
-            showStatus("🛑 Format Exception: Please scan the live classroom projector screen directly.", "error");
+        }
+
+        if (extractedToken && extractedToken.length > 0) {
+            localStorage.setItem('buffered_token', extractedToken);
+            localStorage.setItem('buffered_timestamp', localScanTimestamp);
+
+            document.getElementById('scanBtn').disabled = true;
+            showStatus("✓ QR Code captured and sealed locally! Tap sync whenever your network status is clear.", "success");
+            document.getElementById('syncBtn').style.display = 'block';
+        } else {
+            showStatus("🛑 Read Error: Unable to extract secure token matrix values.", "error");
         }
     }
 
