@@ -1,4 +1,4 @@
-const CACHE = "attendance-v1";
+const CACHE = "attendance-v2";
 const ASSETS = ["./portal.html", "./sw.js"];
 
 self.addEventListener("install", event => {
