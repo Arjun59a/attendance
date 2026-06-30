@@ -1,11 +1,10 @@
-const CACHE_NAME = "attendance-portal-v12"; // New version forces the phone browser to dump old broken caches
+const CACHE_NAME = "attendance-portal-v15"; 
 const ASSETS = [
   "./",
   "./portal.html",
   "./html5-qrcode.min.js"
 ];
 
-// Instantly force installation of the clean caching rules
 self.addEventListener("install", (e) => {
   self.skipWaiting();
   e.waitUntil(
@@ -15,7 +14,6 @@ self.addEventListener("install", (e) => {
   );
 });
 
-// Immediately wipe away old broken cache versions from your phone
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {
@@ -28,10 +26,8 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// Network-first with immediate offline fallback strategy
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
-
   e.respondWith(
     fetch(e.request)
       .then((response) => {
@@ -46,7 +42,6 @@ self.addEventListener("fetch", (e) => {
       .catch(() => {
         return caches.match(e.request, { ignoreSearch: true }).then((cachedResponse) => {
           if (cachedResponse) return cachedResponse;
-          
           if (e.request.mode === 'navigate') {
             return caches.match('./portal.html', { ignoreSearch: true });
           }
