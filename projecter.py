@@ -24,28 +24,14 @@ def current_bracket():
     return int(datetime.now(timezone.utc).timestamp()) // BRACKET_SECONDS
 
 def token_for(session, bracket):
-    raw = "|".join([
-        SECRET_SALT,
-        str(bracket),
-        session["id"],
-        session["start"],
-        session["end"],
-        session["running"],
-    ])
+    raw = "|".join([SECRET_SALT, str(bracket), session["id"], session["start"], session["end"], session["running"]])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 def payload_for(session):
-    return "|".join([
-        token_for(session, current_bracket()),
-        session["id"],
-        session["start"],
-        session["end"],
-        session["running"],
-    ])
+    return "|".join([token_for(session, current_bracket()), session["id"], session["start"], session["end"], session["running"]])
 
 def write_qr(payload):
-    img = qrcode.make(payload)
-    img.save(OUTPUT_FILE)
+    qrcode.make(payload).save(OUTPUT_FILE)
 
 def india_time(dt):
     return (dt + timedelta(hours=5, minutes=30)).strftime("%d-%m-%Y %I:%M:%S %p")
@@ -58,7 +44,6 @@ print("India end time:", india_time(session_end))
 print("QR file:", OUTPUT_FILE)
 
 last = ""
-
 while True:
     payload = payload_for(SESSION)
     if payload != last:

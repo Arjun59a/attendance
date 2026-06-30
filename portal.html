@@ -10,77 +10,35 @@ main{max-width:460px;margin:auto;min-height:100vh;padding:18px;display:grid;plac
 section{width:100%;background:white;border-radius:8px;padding:18px;box-shadow:0 16px 42px #0002}
 h1{margin:0 0 12px;font-size:2rem}
 input,textarea,button{width:100%;box-sizing:border-box;font:inherit;margin-top:10px;padding:13px;border-radius:8px}
-input,textarea{border:1px solid #cbd5e1}
-button{border:0;background:#166534;color:white;font-weight:800}
-button.secondary{background:#334155}
-button:disabled{opacity:.65}
-video{
-  width:78%;
-  max-width:280px;
-  aspect-ratio:1;
-  display:block;
-  margin:14px auto 4px;
-  background:#111827;
-  border-radius:8px;
-  object-fit:cover;
-}
-.status{
-  margin-top:12px;
-  padding:12px;
-  background:#f8fafc;
-  border:1px solid #e2e8f0;
-  border-radius:8px;
-  min-height:48px;
-  display:flex;
-  align-items:center;
-  gap:10px;
-}
-.spinner{
-  width:18px;
-  height:18px;
-  border:3px solid #cbd5e1;
-  border-top-color:#166534;
-  border-radius:50%;
-  animation:spin .8s linear infinite;
-  display:none;
-  flex:0 0 auto;
-}
-.status.loading .spinner{display:block}
-@keyframes spin{to{transform:rotate(360deg)}}
+input,textarea{border:1px solid #cbd5e1}button{border:0;background:#166534;color:white;font-weight:800}
+button.secondary{background:#334155}button:disabled{opacity:.65}
+video{width:78%;max-width:280px;aspect-ratio:1;display:block;margin:14px auto 4px;background:#111827;border-radius:8px;object-fit:cover}
+.status{margin-top:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;min-height:48px;display:flex;align-items:center;gap:10px}
+.spinner{width:18px;height:18px;border:3px solid #cbd5e1;border-top-color:#166534;border-radius:50%;animation:spin .8s linear infinite;display:none}
+.status.loading .spinner{display:block}@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
-<main>
-<section>
+<main><section>
 <h1>Attendance</h1>
 <div id="device"></div>
-
 <input id="enroll" placeholder="Enrollment No">
 <input id="className" placeholder="Class">
-
 <video id="video" playsinline muted></video>
-
 <button id="scan">Start Scan</button>
 <button id="sync" class="secondary">Sync Saved Attendance</button>
-
 <textarea id="manual" placeholder="Paste QR payload if camera scan fails"></textarea>
 <button id="saveManual" class="secondary">Save Manual Payload</button>
-
-<div class="status" id="statusBox">
-  <span class="spinner"></span>
-  <span id="status">Ready.</span>
-</div>
-</section>
-</main>
+<div class="status" id="statusBox"><span class="spinner"></span><span id="status">Ready.</span></div>
+</section></main>
 
 <script>
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfVKswUkF_05LeCeirkFw9dUzeu7wWPN85aEv3Dv3mKfhciQ5oBjDOjE8WhNrJOlU0/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbybGy4jtDNfvDUdNFUd5JDdqG9bexegl4PBmzyjavK_nM78kT9cgqRjSWDKBrExA9Tu7g/exec";
 
 const deviceKey = "att_device_id";
 const pendingKey = "att_pending";
 const enrollKey = "att_enrollment";
 const classKey = "att_class";
-const submittedKey = "att_submitted_" + new Date().toISOString().slice(0,10);
 
 let deviceId = localStorage.getItem(deviceKey);
 if (!deviceId) {
@@ -99,32 +57,40 @@ function status(msg, loading=false){
 
 function pending(){ return JSON.parse(localStorage.getItem(pendingKey) || "[]"); }
 function setPending(x){ localStorage.setItem(pendingKey, JSON.stringify(x)); }
-function submitted(){ return localStorage.getItem(submittedKey) === "1"; }
+
+function parsePayload(raw) {
+  const p = raw.trim().split("|");
+  if (p.length !== 5) throw new Error("Invalid QR payload.");
+  return { token:p[0], sessionId:p[1], startTime:p[2], endTime:p[3], isRunning:p[4] };
+}
+
+function sessionLockKey(parsed) {
+  return "att_submitted_" + parsed.sessionId + "_" + parsed.startTime;
+}
 
 function savePayload(raw) {
-  if (submitted()) return status("Already saved attendance today on this phone.");
+  let parsed;
+  try { parsed = parsePayload(raw); } catch(e) { return status(e.message); }
+
+  const lockKey = sessionLockKey(parsed);
+  if (localStorage.getItem(lockKey) === "1") {
+    return status("Already saved attendance for this session.");
+  }
 
   const enrollmentId = enroll.value.trim();
   const cls = className.value.trim();
-
   if (!enrollmentId) return status("Enter Enrollment No first.");
   if (!cls) return status("Enter Class first.");
 
-  const p = raw.trim().split("|");
-  if (p.length !== 5) return status("Invalid QR payload.");
-
   const item = {
-    token: p[0],
-    sessionId: p[1],
-    startTime: p[2],
-    endTime: p[3],
-    isRunning: p[4],
-    enrollmentId: enrollmentId,
+    ...parsed,
+    enrollmentId,
     className: cls,
-    deviceId: deviceId,
+    deviceId,
     capturedAt: new Date().toISOString(),
-    localDate: new Date().toISOString().slice(0,10),
-    rawPayload: raw.trim()
+    localDate: localDateKey(),
+    rawPayload: raw.trim(),
+    lockKey
   };
 
   const list = pending();
@@ -133,13 +99,17 @@ function savePayload(raw) {
 
   localStorage.setItem(enrollKey, enrollmentId);
   localStorage.setItem(classKey, cls);
-  localStorage.setItem(submittedKey, "1");
+  localStorage.setItem(lockKey, "1");
 
-  status("Saved offline. Sync when internet is available.");
+  status("Saved offline for this session. Sync when internet is available.");
+}
+
+function localDateKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
 async function startScan() {
-  if (submitted()) return status("Already saved attendance today.");
   if (!("BarcodeDetector" in window)) return status("Camera scan unsupported here. Paste payload manually.");
 
   const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" } });
@@ -168,9 +138,7 @@ async function syncNow() {
   if (!navigator.onLine) return status("Offline. Data is safe on this phone.");
   if (APPS_SCRIPT_URL.includes("PASTE_YOUR")) return status("Add Apps Script URL first.");
 
-  sync.disabled = true;
-  scan.disabled = true;
-  saveManual.disabled = true;
+  sync.disabled = true; scan.disabled = true; saveManual.disabled = true;
   sync.textContent = "Syncing...";
   status("Syncing attendance. Please wait...", true);
 
@@ -178,10 +146,10 @@ async function syncNow() {
 
   for (const item of list) {
     try {
-      const res = await fetch(APPS_SCRIPT_URL, {
-        method: "POST",
-        body: new URLSearchParams(item)
-      });
+      const sendItem = {...item};
+      delete sendItem.lockKey;
+
+      const res = await fetch(APPS_SCRIPT_URL, { method:"POST", body:new URLSearchParams(sendItem) });
       const json = await res.json();
 
       if (!json.ok) {
@@ -196,10 +164,7 @@ async function syncNow() {
   }
 
   setPending(left);
-
-  sync.disabled = false;
-  scan.disabled = false;
-  saveManual.disabled = false;
+  sync.disabled = false; scan.disabled = false; saveManual.disabled = false;
   sync.textContent = "Sync Saved Attendance";
   document.getElementById("statusBox").classList.remove("loading");
 
@@ -210,9 +175,7 @@ scan.onclick = () => startScan().catch(e => status(e.message));
 sync.onclick = syncNow;
 saveManual.onclick = () => savePayload(manual.value);
 
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js");
-}
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 </script>
 </body>
 </html>
