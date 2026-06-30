@@ -10,6 +10,7 @@ TIME_WINDOW_SECONDS = 3
 def live_qr_broadcaster():
     print("🚀 Smart Attendance Core Matrix Active...")
     print("📺 Broadcasting raw text token payloads onto classroom projector framework...")
+    print("⌨️  Press 'q' in the window to safely close the projector application.")
     
     cv2.namedWindow("CLASSROOM ATTENDANCE GATEWAY", cv2.WINDOW_NORMAL)
     
@@ -17,11 +18,9 @@ def live_qr_broadcaster():
         current_epoch = int(time.time())
         current_bracket = current_epoch // TIME_WINDOW_SECONDS
         
-        # Generate raw 16-character secure hash code
         raw_message = f"{SECRET_SALT}_{current_bracket}".encode('utf-8')
         secure_token = hashlib.sha256(raw_message).hexdigest()[:16]
         
-        # Build out the visual QR containing ONLY raw text data string to block offline browser drops
         qr = qrcode.QRCode(version=1, box_size=10, border=4)
         qr.add_data(secure_token)
         qr.make(fit=True)

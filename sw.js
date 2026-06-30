@@ -1,8 +1,8 @@
-const CACHE_NAME = "attendance-portal-v6";
+const CACHE_NAME = "attendance-portal-v7";
 const ASSETS = [
   "/attendance/",
   "/attendance/portal.html",
-  "https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"
+  "/attendance/html5-qrcode.min.js"
 ];
 
 self.addEventListener("install", (e) => {

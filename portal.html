@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Attendance Portal</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <script src="html5-qrcode.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .card { background: #1e1e1e; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 100%; max-width: 400px; box-sizing: border-box; }
@@ -83,27 +83,33 @@
     const deviceId = localStorage.getItem('device_fingerprint');
 
     window.addEventListener('load', () => {
-        if(localStorage.getItem('cached_enrollment')) document.getElementById('enrollment').value = localStorage.getItem('cached_enrollment');
-        if(localStorage.getItem('cached_dept')) document.getElementById('dept').value = localStorage.getItem('cached_dept');
-        if(localStorage.getItem('cached_semester')) document.getElementById('semester').value = localStorage.getItem('cached_semester');
+        try {
+            if(localStorage.getItem('cached_enrollment')) document.getElementById('enrollment').value = localStorage.getItem('cached_enrollment');
+            if(localStorage.getItem('cached_dept')) document.getElementById('dept').value = localStorage.getItem('cached_dept');
+            if(localStorage.getItem('cached_semester')) document.getElementById('semester').value = localStorage.getItem('cached_semester');
 
-        document.getElementById('configText').innerText = "✓ Backend Target Linked";
+            document.getElementById('configText').innerText = "✓ Backend Target Linked";
 
-        const savedToken = localStorage.getItem('buffered_token');
-        const savedTimestamp = parseInt(localStorage.getItem('buffered_timestamp') || '0');
-        const currentTimestamp = Math.floor(Date.now() / 1000);
-        
-        if (savedToken && (currentTimestamp - savedTimestamp < 300)) {
-            toggleFormInputs(true);
-            document.getElementById('scanBtn').disabled = true;
-            showStatus("✓ Unsent Ticket Located! Tap below to sync your attendance now.", "success");
-            document.getElementById('syncBtn').style.display = 'block';
-        } else {
-            localStorage.removeItem('buffered_token');
-            localStorage.removeItem('buffered_timestamp');
+            const savedToken = localStorage.getItem('buffered_token');
+            const savedTimestamp = parseInt(localStorage.getItem('buffered_timestamp') || '0');
+            const currentTimestamp = Math.floor(Date.now() / 1000);
+            
+            if (savedToken && (currentTimestamp - savedTimestamp < 300)) {
+                toggleFormInputs(true);
+                document.getElementById('scanBtn').disabled = true;
+                showStatus("✓ Unsent Ticket Located! Tap below to sync your attendance now.", "success");
+                document.getElementById('syncBtn').style.display = 'block';
+            } else {
+                localStorage.removeItem('buffered_token');
+                localStorage.removeItem('buffered_timestamp');
+                toggleFormInputs(false);
+                document.getElementById('scanBtn').disabled = false;
+                document.getElementById('syncBtn').style.display = 'none';
+            }
+        } catch(e) {
+            console.error(e);
             toggleFormInputs(false);
             document.getElementById('scanBtn').disabled = false;
-            document.getElementById('syncBtn').style.display = 'none';
         }
     });
 
@@ -127,6 +133,10 @@
     }
 
     function startScanner() {
+        if (typeof Html5QrcodeScanner === 'undefined') {
+            showStatus("🛑 Engine Error: Scanner library assets not yet ready offline. Reload page online once.", "error");
+            return;
+        }
         document.getElementById('reader').style.display = 'block';
         html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
         html5QrcodeScanner.render(onScanSuccess, onScanFailure);
