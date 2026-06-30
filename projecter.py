@@ -6,7 +6,7 @@ import numpy as np
 
 # 🟢 CONFIGURATION SETTINGS
 # Replace this string with your live production GitHub Pages URL
-GITHUB_PORTAL_URL = "https://arjunthakor.github.io/smart-attendance/portal.html"
+GITHUB_PORTAL_URL = "https://Arjun59a.github.io/attendance/portal.html"
 SECRET_SALT = "GanpatUniv_IT_Sem5_2026_SecureKey"
 TIME_WINDOW_SECONDS = 3
 
