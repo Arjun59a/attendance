@@ -1,12 +1,12 @@
-const CACHE_NAME = "attendance-portal-v1";
+const CACHE_NAME = "attendance-portal-v4";
 const ASSETS = [
   "./",
-  "./portal.html",
+  "portal.html",
   "https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"
 ];
 
-// Install stage: Lock portal interface assets securely into local device storage
 self.addEventListener("install", (e) => {
+  self.skipWaiting();
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS);
@@ -14,7 +14,6 @@ self.addEventListener("install", (e) => {
   );
 });
 
-// Activation stage: Flush out obsolete structural cache blocks
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {
@@ -23,15 +22,23 @@ self.addEventListener("activate", (e) => {
           if (key !== CACHE_NAME) return caches.delete(key);
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
 
-// Network intercept handler: Serve UI elements immediately from cache if offline
 self.addEventListener("fetch", (e) => {
+  if (e.request.method !== "GET") return;
+
   e.respondWith(
-    caches.match(e.request).then((cachedResponse) => {
-      return cachedResponse || fetch(e.request);
+    caches.match(e.request, { ignoreSearch: true }).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(e.request).catch(() => {
+        if (e.request.mode === 'navigate') {
+          return caches.match('./', { ignoreSearch: true });
+        }
+      });
     })
   );
 });

@@ -14,7 +14,8 @@
         input:focus, select:focus { border-color: #00adb5; outline: none; }
         button { width: 100%; padding: 12px; margin-top: 15px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .btn-scan { background: #00adb5; color: #fff; }
-        .btn-sync { background: #28a745; color: #fff; display: none; }
+        .btn-scan:disabled { background: #444; color: #888; cursor: not-allowed; }
+        .btn-sync { background: #28a745; color: #fff; }
         #reader { width: 100%; margin-top: 15px; border-radius: 8px; overflow: hidden; display: none; }
         .status { margin-top: 15px; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; display: none; word-wrap: break-word; }
         .status.success { background: rgba(40, 167, 69, 0.2); color: #28a745; border: 1px solid #28a745; }
@@ -25,6 +26,7 @@
 
 <div class="card">
     <h2>Student Portal</h2>
+    <div id="setupAlert" class="status error" style="display:none; margin-bottom:15px;"></div>
     
     <label for="dept">Department</label>
     <select id="dept">
@@ -54,14 +56,13 @@
 
     <div id="statusBox" class="status"></div>
 
-    <button class="button btn-sync" id="syncBtn" onclick="syncToCloud()">☁️ Sync Attendance to Cloud</button>
+    <button class="button btn-sync" id="syncBtn" style="display: none;" onclick="syncToCloud()">☁️ Sync Attendance to Cloud</button>
 </div>
 
 <script>
-    // ⚠️ CHOOSE YOUR ACTIVE DEPLOYED GOOGLE SCRIPT URL HERE
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwW2TP9sig_QQCBgDaLC5Jc5PMy5Ll6Us6sDt-pxj-zaK8uVizk2Irzf5XVsMwlNq4vyg/exec";
+    const urlParams = new URLSearchParams(window.location.search);
+    const GOOGLE_SCRIPT_URL = urlParams.get('rpc'); 
 
-    let scannedToken = "";
     let html5QrcodeScanner = null;
 
     if (!localStorage.getItem('device_fingerprint')) {
@@ -69,10 +70,20 @@
     }
     const deviceId = localStorage.getItem('device_fingerprint');
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (localStorage.getItem('last_submission_date') === todayStr) {
-        showStatus("Notice: This device already has a local submission record for today.", "success");
+    if (!GOOGLE_SCRIPT_URL) {
+        const alertBox = document.getElementById('setupAlert');
+        alertBox.innerText = "🛑 Configuration Mismatch: Missing active deployment target link parameter pointer.";
+        alertBox.style.display = "block";
+        document.getElementById('scanBtn').disabled = true;
     }
+
+    window.addEventListener('load', () => {
+        if (localStorage.getItem('buffered_token')) {
+            document.getElementById('scanBtn').disabled = true;
+            showStatus("✓ Saved Ticket Located! Tap below to sync your attendance whenever your network bars are strong.", "success");
+            document.getElementById('syncBtn').style.display = 'block';
+        }
+    });
 
     function showStatus(text, type) {
         const box = document.getElementById('statusBox');
@@ -88,13 +99,29 @@
     }
 
     function onScanSuccess(decodedText) {
-        scannedToken = decodedText;
         if (html5QrcodeScanner) {
             html5QrcodeScanner.clear().catch(err => console.log(err));
         }
         document.getElementById('reader').style.display = 'none';
-        showStatus("✓ QR Captured Successfully! Ready to Sync.", "success");
-        document.getElementById('syncBtn').style.display = 'block';
+
+        try {
+            const scannedUrl = new URL(decodedText);
+            const extractedToken = scannedUrl.searchParams.get('token');
+            const localScanTimestamp = Math.floor(Date.now() / 1000);
+
+            if (extractedToken) {
+                localStorage.setItem('buffered_token', extractedToken);
+                localStorage.setItem('buffered_timestamp', localScanTimestamp);
+
+                document.getElementById('scanBtn').disabled = true;
+                showStatus("✓ Scan captured from projector and sealed locally! Tap sync whenever your network status is clear.", "success");
+                document.getElementById('syncBtn').style.display = 'block';
+            } else {
+                showStatus("🛑 Read Error: Invalid QR Code profile format structure.", "error");
+            }
+        } catch (e) {
+            showStatus("🛑 Format Exception: Please scan the live classroom projector screen directly.", "error");
+        }
     }
 
     function onScanFailure(error) {}
@@ -105,49 +132,56 @@
         const sem = document.getElementById('semester').value;
 
         if (!enrollment) {
-            alert("Please enter your Enrollment/Roll number first!");
+            alert("Please input your entry enrollment key first.");
             return;
         }
 
-        // Catch offline state before initiating network fetch request blocks
+        const savedToken = localStorage.getItem('buffered_token');
+        const savedTimestamp = localStorage.getItem('buffered_timestamp');
+
+        if (!savedToken || !savedTimestamp) {
+            showStatus("🛑 Buffer error: Token mismatch context variables. Try scanning again.", "error");
+            return;
+        }
+
         if (!navigator.onLine) {
-            showStatus("🛑 Device Offline: QR is saved locally, but internet connection is required to sync to Google Sheets!", "error");
+            showStatus("🛑 Device Offline: Your token remains safely buffered locally, but full 5G/Wi-Fi bars are required to write data directly to Google Sheets!", "error");
             return;
         }
 
-        showStatus("Syncing with Cloud... Please wait.", "success");
+        showStatus("Transmitting attendance record to Google Cloud database sheets...", "success");
 
         const payload = {
             enrollment: enrollment,
             department: dept,
             semester: sem,
-            token: scannedToken,
+            token: savedToken,
+            scanTime: savedTimestamp,
             deviceId: deviceId
         };
 
         const queryString = new URLSearchParams(payload).toString();
 
-        fetch(GOOGLE_SCRIPT_URL + "?" + queryString, {
-            method: 'GET'
-        })
+        fetch(GOOGLE_SCRIPT_URL + "?" + queryString, { method: 'GET' })
         .then(response => response.text())
         .then(responseText => {
-            console.log("Server Response Payload:", responseText);
             if (responseText.trim() === "SUCCESS") {
-                showStatus("🎉 Attendance Successfully Logged into Spreadsheet!", "success");
+                showStatus("🎉 Attendance Successfully Logged into Matrix Sheet Columns!", "success");
                 document.getElementById('syncBtn').style.display = 'none';
-                localStorage.setItem('last_submission_date', todayStr);
+                
+                localStorage.removeItem('buffered_token');
+                localStorage.removeItem('buffered_timestamp');
+                document.getElementById('scanBtn').disabled = false;
             } else {
                 showStatus("🛑 Registration Denied: " + responseText, "error");
             }
         })
         .catch(err => {
-            showStatus("Network sync mismatch configuration exception.", "error");
+            showStatus("Network socket timeout exception. Tap sync again.", "error");
             console.error(err);
         });
     }
 
-    // --- SERVICE WORKER REGISTRATION LAYER FOR OFFLINE ACCESS ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
