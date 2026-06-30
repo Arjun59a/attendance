@@ -8,13 +8,10 @@ BRACKET_SECONDS = 3
 OUTPUT_FILE = "attendance_qr.png"
 
 SESSIONS = [
-    {
-        "id": "CLASS-01",
-        "start": "2026-06-30T00:00:00Z",
-        "end": "2026-07-01T23:59:59Z",
-        "running": "0"
-    }
+    {"id": "CLASS-01", "start": "2026-06-30T09:00:00Z", "end": "2026-06-30T10:00:00Z", "running": "0"},
+    {"id": "CLASS-02", "start": "2026-06-30T10:00:00Z", "end": "2026-06-30T11:00:00Z", "running": "0"},
 ]
+
 ACTIVE_SESSION_INDEX = 0
 
 def current_bracket():
