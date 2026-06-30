@@ -58,8 +58,8 @@
 </div>
 
 <script>
-    // ⚠️ REPLACE WITH YOUR NEW GENERATED DEPLOYMENT URL STRING
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwW2TP9sig_QQCBgDaLC5Jc5PMy5Ll6Us6sDt-pxj-zaK8uVizk2Irzf5XVsMwlNq4vyg/exec";
+    // ⚠️ CHOOSE YOUR ACTIVE DEPLOYED GOOGLE SCRIPT URL HERE
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwTuNBRXb6RCq9XSld2Sye4zMlE3BFmnIw1bpVQ0IMd-hMEbNNQEyfMw6BE4sMgzx3-dQ/exec";
 
     let scannedToken = "";
     let html5QrcodeScanner = null;
@@ -109,6 +109,12 @@
             return;
         }
 
+        // Catch offline state before initiating network fetch request blocks
+        if (!navigator.onLine) {
+            showStatus("🛑 Device Offline: QR is saved locally, but internet connection is required to sync to Google Sheets!", "error");
+            return;
+        }
+
         showStatus("Syncing with Cloud... Please wait.", "success");
 
         const payload = {
@@ -121,7 +127,6 @@
 
         const queryString = new URLSearchParams(payload).toString();
 
-        // Safe cross-origin GET network layer intercept configuration
         fetch(GOOGLE_SCRIPT_URL + "?" + queryString, {
             method: 'GET'
         })
@@ -137,8 +142,17 @@
             }
         })
         .catch(err => {
-            showStatus("Network data configuration mismatch constraint exception.", "error");
+            showStatus("Network sync mismatch configuration exception.", "error");
             console.error(err);
+        });
+    }
+
+    // --- SERVICE WORKER REGISTRATION LAYER FOR OFFLINE ACCESS ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Offline Engine Active:', reg.scope))
+                .catch(err => console.log('Service Worker Failed:', err));
         });
     }
 </script>
