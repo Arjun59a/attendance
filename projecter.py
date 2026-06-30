@@ -1,60 +1,56 @@
-import time
-import calendar
 import hashlib
+import time
+from datetime import datetime, timezone
 import qrcode
-import cv2
-import numpy as np
 
-# This is the secret key that links the Broadcaster and the Google Script
-SECRET_SALT = "GanpatUniv_IT_Sem5_2026_SecureKey"
+SECRET_SALT = "CHANGE_ME_TO_A_LONG_RANDOM_SECRET"
+BRACKET_SECONDS = 3
+OUTPUT_FILE = "attendance_qr.png"
 
-# Expanded Buffer: [Start_Time_Epoch, End_Time_Epoch, Is_Running_Status]
-# We initialize all 20 sessions explicitly
-sessions = []
-for i in range(20):
-    sessions.append([0, 0, 1]) 
+SESSIONS = [
+    {"id": "CLASS-01", "start": "2026-06-30T09:00:00Z", "end": "2026-06-30T10:00:00Z", "running": "0"},
+    {"id": "CLASS-02", "start": "2026-06-30T10:00:00Z", "end": "2026-06-30T11:00:00Z", "running": "0"},
+]
 
-ACTIVE_SESSION_INDEX = 0 
+ACTIVE_SESSION_INDEX = 0
 
-def generate_qr():
-    # Set window to a fixed size for better stability during presentation
-    cv2.namedWindow("CLASSROOM ATTENDANCE GATEWAY", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("CLASSROOM ATTENDANCE GATEWAY", 600, 600)
-    
-    while True:
-        # Get current GMT time for synchronization
-        current_time_epoch = calendar.timegm(time.gmtime())
-        current_bracket = current_time_epoch // 3
-        
-        # Create the token using SHA-256
-        raw_message = (SECRET_SALT + "_" + str(current_bracket)).encode('utf-8')
-        secure_token = hashlib.sha256(raw_message).hexdigest()[:16]
-        
-        # Retrieve the specific session configuration from our buffer
-        active_session = sessions[ACTIVE_SESSION_INDEX]
-        start_time = active_session[0]
-        end_time = active_session[1]
-        is_running_status = active_session[2]
-        
-        # The QR Payload (The "Passport" of the attendance)
-        qr_data = f"{secure_token}|{ACTIVE_SESSION_INDEX}|{start_time}|{end_time}|{is_running_status}"
-        
-        # Generate the QR Code
-        qr = qrcode.QRCode(version=1, box_size=10, border=4)
-        qr.add_data(qr_data)
-        qr.make(fit=True)
-        
-        # Convert to OpenCV image format
-        qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
-        opencv_img = cv2.cvtColor(np.array(qr_img), cv2.COLOR_RGB2BGR)
-        
-        cv2.imshow("CLASSROOM ATTENDANCE GATEWAY", opencv_img)
-        
-        # Refresh every 1000ms, break if 'q' is pressed
-        if cv2.waitKey(1000) & 0xFF == ord('q'):
-            break
-            
-    cv2.destroyAllWindows()
+def current_bracket():
+    return int(datetime.now(timezone.utc).timestamp()) // BRACKET_SECONDS
 
-if __name__ == "__main__":
-    generate_qr()
+def token_for(session, bracket):
+    raw = "|".join([
+        SECRET_SALT,
+        str(bracket),
+        session["id"],
+        session["start"],
+        session["end"],
+        session["running"],
+    ])
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+def payload_for(session):
+    return "|".join([
+        token_for(session, current_bracket()),
+        session["id"],
+        session["start"],
+        session["end"],
+        session["running"],
+    ])
+
+def write_qr(payload):
+    img = qrcode.make(payload)
+    img.save(OUTPUT_FILE)
+
+last = ""
+session = SESSIONS[ACTIVE_SESSION_INDEX]
+
+print("Broadcasting:", session["id"])
+print("QR file:", OUTPUT_FILE)
+
+while True:
+    payload = payload_for(session)
+    if payload != last:
+        write_qr(payload)
+        print("QR updated:", payload)
+        last = payload
+    time.sleep(0.25)

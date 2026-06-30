@@ -1,81 +1,166 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Smart Attendance Portal</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #121212; color: #ffffff; margin: 0; padding: 20px; display: flex; justify-content: center; min-height: 100vh; }
-        .card { background-color: #1e1e1e; padding: 25px; border-radius: 20px; width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; }
-        h2 { color: #00adb5; }
-        input { width: 100%; padding: 15px; margin: 10px 0; background-color: #2a2a2a; border: 1px solid #444; border-radius: 12px; color: #fff; box-sizing: border-box; font-size: 16px; }
-        button { width: 100%; padding: 15px; margin: 10px 0; border-radius: 12px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; }
-        .btn-scan { background-color: #00adb5; color: white; }
-        .btn-sync { background-color: #28a745; color: white; }
-        #reader { width: 100%; margin-top: 15px; border-radius: 12px; overflow: hidden; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attendance</title>
+<style>
+body{margin:0;font-family:system-ui;background:#eef2f7;color:#172033}
+main{max-width:480px;margin:auto;min-height:100vh;padding:18px;display:grid;place-items:center}
+section{width:100%;background:white;border-radius:8px;padding:18px;box-shadow:0 16px 42px #0002}
+h1{margin:0 0 12px;font-size:2rem}
+input,textarea,button{width:100%;box-sizing:border-box;font:inherit;margin-top:10px;padding:13px;border-radius:8px}
+input,textarea{border:1px solid #cbd5e1}
+button{border:0;background:#166534;color:white;font-weight:800}
+button.secondary{background:#334155}
+video{width:100%;aspect-ratio:1;background:#111827;border-radius:8px;object-fit:cover;margin-top:12px}
+.status{margin-top:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px}
+</style>
 </head>
 <body>
+<main>
+<section>
+<h1>Attendance</h1>
+<div id="device"></div>
 
-<div class="card">
-    <h2>Attendance Portal</h2>
-    <input type="text" id="enrollment" placeholder="Enter Enrollment Number">
-    <button class="btn-scan" onclick="startScanner()">📷 Scan Classroom QR</button>
-    <div id="reader" style="display:none"></div>
-    <button class="btn-sync" id="syncBtn" style="display:none" onclick="syncToCloud()">☁️ Sync to Cloud</button>
-    <div id="status" style="margin-top: 15px; color: #aaa; font-size: 14px;"></div>
-</div>
+<input id="enroll" placeholder="Enrollment No">
+<input id="className" placeholder="Class">
+
+<video id="video" playsinline muted></video>
+
+<button id="scan">Start Scan</button>
+<button id="sync" class="secondary">Sync Saved Attendance</button>
+
+<textarea id="manual" placeholder="Paste QR payload if camera scan fails"></textarea>
+<button id="saveManual" class="secondary">Save Manual Payload</button>
+
+<div class="status" id="status">Ready.</div>
+</section>
+</main>
 
 <script>
-    // Configuration
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzR6Jq-Z-fiZrHGZ8OQrVTRxgYiDv55BYtSzH0J79CPMTAVl5Z-DYliaiWNUdDNW6_P3A/exec";
-    
-    // Maintain a permanent Device Identity
-    if (!localStorage.getItem('device_id')) {
-        localStorage.setItem('device_id', 'DEV-' + Math.random().toString(36).substring(2, 15));
-    }
-    const deviceId = localStorage.getItem('device_id');
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw2Lcim4DSsTspX_13wi6aM8WQLtnsnJ48Ox0iCZMrf66yDRTO7tgUuSUT5G9FFbdhDjg/exec";
 
-    function startScanner() {
-        document.getElementById('reader').style.display = 'block';
-        const scanner = new Html5Qrcode("reader");
-        
-        scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, 
-            (decodedText) => {
-                scanner.stop();
-                document.getElementById('reader').style.display = 'none';
-                
-                // Parse the payload explicitly
-                const dataParts = decodedText.split('|');
-                localStorage.setItem('token', dataParts[0]);
-                localStorage.setItem('start', dataParts[2]);
-                localStorage.setItem('end', dataParts[3]);
-                localStorage.setItem('status', dataParts[4]);
-                
-                document.getElementById('syncBtn').style.display = 'block';
-                document.getElementById('status').innerText = "✓ Scan Captured! Ready to Sync.";
-            },
-            (error) => { console.log("Scanner running..."); }
-        );
-    }
+const deviceKey = "att_device_id";
+const pendingKey = "att_pending";
+const enrollKey = "att_enrollment";
+const classKey = "att_class";
+const submittedKey = "att_submitted_" + new Date().toISOString().slice(0,10);
 
-    function syncToCloud() {
-        const payload = {
-            enrollment: document.getElementById('enrollment').value,
-            token: localStorage.getItem('token'),
-            start: localStorage.getItem('start'),
-            end: localStorage.getItem('end'),
-            isRunning: localStorage.getItem('status'),
-            deviceId: deviceId
-        };
-        
-        const params = new URLSearchParams(payload).toString();
-        fetch(GOOGLE_SCRIPT_URL + "?" + params)
-            .then(response => response.text())
-            .then(text => alert("Server Response: " + text))
-            .catch(err => alert("Sync Failed. Please check connection."));
+let deviceId = localStorage.getItem(deviceKey);
+if (!deviceId) {
+  deviceId = crypto.randomUUID ? crypto.randomUUID() : "dev-" + Date.now() + "-" + Math.random();
+  localStorage.setItem(deviceKey, deviceId);
+}
+
+device.textContent = "Device: " + deviceId.slice(0,8);
+enroll.value = localStorage.getItem(enrollKey) || "";
+className.value = localStorage.getItem(classKey) || "";
+
+function status(msg){ document.getElementById("status").textContent = msg; }
+function pending(){ return JSON.parse(localStorage.getItem(pendingKey) || "[]"); }
+function setPending(x){ localStorage.setItem(pendingKey, JSON.stringify(x)); }
+function submitted(){ return localStorage.getItem(submittedKey) === "1"; }
+
+function savePayload(raw) {
+  if (submitted()) return status("Already saved attendance today on this phone.");
+
+  const enrollmentId = enroll.value.trim();
+  const cls = className.value.trim();
+
+  if (!enrollmentId) return status("Enter Enrollment No first.");
+  if (!cls) return status("Enter Class first.");
+
+  const p = raw.trim().split("|");
+  if (p.length !== 5) return status("Invalid QR payload.");
+
+  const item = {
+    token: p[0],
+    sessionId: p[1],
+    startTime: p[2],
+    endTime: p[3],
+    isRunning: p[4],
+    enrollmentId: enrollmentId,
+    className: cls,
+    deviceId: deviceId,
+    capturedAt: new Date().toISOString(),
+    localDate: new Date().toISOString().slice(0,10),
+    rawPayload: raw.trim()
+  };
+
+  const list = pending();
+  list.push(item);
+  setPending(list);
+
+  localStorage.setItem(enrollKey, enrollmentId);
+  localStorage.setItem(classKey, cls);
+  localStorage.setItem(submittedKey, "1");
+
+  status("Saved offline. Sync when internet is available.");
+}
+
+async function startScan() {
+  if (submitted()) return status("Already saved attendance today.");
+  if (!("BarcodeDetector" in window)) return status("Camera scan unsupported here. Paste payload manually.");
+
+  const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" } });
+  video.srcObject = stream;
+  await video.play();
+
+  const detector = new BarcodeDetector({ formats:["qr_code"] });
+
+  async function loop() {
+    const codes = await detector.detect(video);
+    if (codes.length) {
+      stream.getTracks().forEach(t => t.stop());
+      savePayload(codes[0].rawValue);
+      return;
     }
+    requestAnimationFrame(loop);
+  }
+
+  status("Scanning...");
+  loop();
+}
+
+async function syncNow() {
+  const list = pending();
+  if (!list.length) return status("Nothing to sync.");
+  if (!navigator.onLine) return status("Offline. Data is safe on this phone.");
+  if (APPS_SCRIPT_URL.includes("PASTE_YOUR")) return status("Add Apps Script URL first.");
+
+  const left = [];
+
+  for (const item of list) {
+    try {
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        body: new URLSearchParams(item)
+      });
+      const json = await res.json();
+
+      if (!json.ok) {
+        left.push(item);
+        status(json.message);
+      }
+    } catch(e) {
+      left.push(item);
+      status("Sync failed. Try again.");
+      break;
+    }
+  }
+
+  setPending(left);
+  if (!left.length) status("Synced successfully. Attendance marked Present.");
+}
+
+scan.onclick = () => startScan().catch(e => status(e.message));
+sync.onclick = syncNow;
+saveManual.onclick = () => savePayload(manual.value);
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js");
+}
 </script>
 </body>
 </html>
