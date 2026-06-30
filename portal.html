@@ -12,6 +12,7 @@
         label { display: block; margin: 12px 0 6px; font-weight: 600; font-size: 14px; color: #aaa; }
         input, select { width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #444; border-radius: 6px; color: #fff; box-sizing: border-box; font-size: 15px; margin-bottom: 5px; }
         input:focus, select:focus { border-color: #00adb5; outline: none; }
+        input:disabled, select:disabled { background: #1a1a1a; color: #777; border-color: #333; cursor: not-allowed; }
         button { width: 100%; padding: 12px; margin-top: 15px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .btn-scan { background: #00adb5; color: #fff; }
         .btn-scan:disabled { background: #444; color: #888; cursor: not-allowed; }
@@ -63,7 +64,6 @@
 </div>
 
 <script>
-    // HARDCODED SYSTEM FALLBACK LINK
     const DEFAULT_RPC = "https://script.google.com/macros/s/AKfycbwW2TP9sig_QQCBgDaLC5Jc5PMy5Ll6Us6sDt-pxj-zaK8uVizk2Irzf5XVsMwlNq4vyg/exec";
     
     const urlParams = new URLSearchParams(window.location.search);
@@ -89,12 +89,29 @@
 
         document.getElementById('configText').innerText = "✓ Backend Target Linked";
 
-        if (localStorage.getItem('buffered_token')) {
+        const savedToken = localStorage.getItem('buffered_token');
+        const savedTimestamp = parseInt(localStorage.getItem('buffered_timestamp') || '0');
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        
+        if (savedToken && (currentTimestamp - savedTimestamp < 300)) {
+            toggleFormInputs(true);
             document.getElementById('scanBtn').disabled = true;
             showStatus("✓ Unsent Ticket Located! Tap below to sync your attendance now.", "success");
             document.getElementById('syncBtn').style.display = 'block';
+        } else {
+            localStorage.removeItem('buffered_token');
+            localStorage.removeItem('buffered_timestamp');
+            toggleFormInputs(false);
+            document.getElementById('scanBtn').disabled = false;
+            document.getElementById('syncBtn').style.display = 'none';
         }
     });
+
+    function toggleFormInputs(disabledStatus) {
+        document.getElementById('enrollment').disabled = disabledStatus;
+        document.getElementById('dept').disabled = disabledStatus;
+        document.getElementById('semester').disabled = disabledStatus;
+    }
 
     function saveProfile() {
         localStorage.setItem('cached_enrollment', document.getElementById('enrollment').value.trim());
@@ -135,6 +152,7 @@
             localStorage.setItem('buffered_token', extractedToken);
             localStorage.setItem('buffered_timestamp', localScanTimestamp);
 
+            toggleFormInputs(true);
             document.getElementById('scanBtn').disabled = true;
             showStatus("✓ Classroom scan captured and sealed locally! Tap sync when you have network connection.", "success");
             document.getElementById('syncBtn').style.display = 'block';
@@ -184,6 +202,7 @@
                 document.getElementById('syncBtn').style.display = 'none';
                 localStorage.removeItem('buffered_token');
                 localStorage.removeItem('buffered_timestamp');
+                toggleFormInputs(false);
                 document.getElementById('scanBtn').disabled = false;
             } else {
                 showStatus("🛑 Registration Denied: " + responseText, "error");
