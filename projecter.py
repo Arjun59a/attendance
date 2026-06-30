@@ -4,36 +4,26 @@ import qrcode
 import cv2
 import numpy as np
 
-# 🟢 CONFIGURATION SETTINGS
-# Replace this string with your live production GitHub Pages URL folder link path
-GITHUB_PORTAL_URL = "https://arjunthakor.github.io/smart-attendance/portal.html"
 SECRET_SALT = "GanpatUniv_IT_Sem5_2026_SecureKey"
 TIME_WINDOW_SECONDS = 3
 
-def generate_secure_embedded_url(faculty_script_url):
-    current_epoch = int(time.time())
-    current_bracket = current_epoch // TIME_WINDOW_SECONDS
-    
-    # Generate the 3-second secure token sequence
-    raw_message = f"{SECRET_SALT}_{current_bracket}".encode('utf-8')
-    secure_token = hashlib.sha256(raw_message).hexdigest()[:16]
-    
-    # Embed parameter mappings directly inside a predictable, clean URL structure
-    dynamic_student_link = f"{GITHUB_PORTAL_URL}?rpc={faculty_script_url}&token={secure_token}"
-    return dynamic_student_link
-
-def live_qr_broadcaster(faculty_script_url):
+def live_qr_broadcaster():
     print("🚀 Smart Attendance Core Matrix Active...")
-    print("📺 Broadcasting real-time routing payloads onto projector framework...")
+    print("📺 Broadcasting raw text token payloads onto classroom projector framework...")
     
     cv2.namedWindow("CLASSROOM ATTENDANCE GATEWAY", cv2.WINDOW_NORMAL)
     
     while True:
-        target_payload_url = generate_secure_embedded_url(faculty_script_url)
+        current_epoch = int(time.time())
+        current_bracket = current_epoch // TIME_WINDOW_SECONDS
         
-        # Build out the visual QR pixel block matrix 
+        # Generate raw 16-character secure hash code
+        raw_message = f"{SECRET_SALT}_{current_bracket}".encode('utf-8')
+        secure_token = hashlib.sha256(raw_message).hexdigest()[:16]
+        
+        # Build out the visual QR containing ONLY raw text data string to block offline browser drops
         qr = qrcode.QRCode(version=1, box_size=10, border=4)
-        qr.add_data(target_payload_url)
+        qr.add_data(secure_token)
         qr.make(fit=True)
         
         qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
@@ -48,6 +38,4 @@ def live_qr_broadcaster(faculty_script_url):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    # The live deployment production link copied from your Google Spreadsheet macro editor
-    ACTIVE_FACULTY_EXEC_URL = "https://script.google.com/macros/s/AKfycbwW2TP9sig_QQCBgDaLC5Jc5PMy5Ll6Us6sDt-pxj-zaK8uVizk2Irzf5XVsMwlNq4vyg/exec"
-    live_qr_broadcaster(ACTIVE_FACULTY_EXEC_URL)
+    live_qr_broadcaster()

@@ -1,7 +1,7 @@
-const CACHE_NAME = "attendance-portal-v5";
+const CACHE_NAME = "attendance-portal-v6";
 const ASSETS = [
-  "./",
-  "portal.html",
+  "/attendance/",
+  "/attendance/portal.html",
   "https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"
 ];
 
@@ -36,7 +36,7 @@ self.addEventListener("fetch", (e) => {
       }
       return fetch(e.request).catch(() => {
         if (e.request.mode === 'navigate') {
-          return caches.match('./', { ignoreSearch: true });
+          return caches.match('/attendance/', { ignoreSearch: true });
         }
       });
     })
