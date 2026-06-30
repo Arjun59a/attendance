@@ -63,17 +63,12 @@
     <div id="configText" class="config-badge">Target System: Monitoring Parameters...</div>
 </div>
 
-<script>
+    <script>
     const DEFAULT_RPC = "https://script.google.com/macros/s/AKfycbwW2TP9sig_QQCBgDaLC5Jc5PMy5Ll6Us6sDt-pxj-zaK8uVizk2Irzf5XVsMwlNq4vyg/exec";
     
     const urlParams = new URLSearchParams(window.location.search);
-    let GOOGLE_SCRIPT_URL = urlParams.get('rpc'); 
-
-    if (GOOGLE_SCRIPT_URL) {
-        localStorage.setItem('saved_rpc_target', GOOGLE_SCRIPT_URL);
-    } else {
-        GOOGLE_SCRIPT_URL = localStorage.getItem('saved_rpc_target') || DEFAULT_RPC;
-    }
+    let GOOGLE_SCRIPT_URL = urlParams.get('rpc') || localStorage.getItem('saved_rpc_target') || DEFAULT_RPC;
+    localStorage.setItem('saved_rpc_target', GOOGLE_SCRIPT_URL);
 
     let html5QrcodeScanner = null;
 
@@ -82,34 +77,32 @@
     }
     const deviceId = localStorage.getItem('device_fingerprint');
 
+    // Force unlock everything immediately on load to prevent freezes
     window.addEventListener('load', () => {
-        try {
-            if(localStorage.getItem('cached_enrollment')) document.getElementById('enrollment').value = localStorage.getItem('cached_enrollment');
-            if(localStorage.getItem('cached_dept')) document.getElementById('dept').value = localStorage.getItem('cached_dept');
-            if(localStorage.getItem('cached_semester')) document.getElementById('semester').value = localStorage.getItem('cached_semester');
+        // Load inputs
+        if(localStorage.getItem('cached_enrollment')) document.getElementById('enrollment').value = localStorage.getItem('cached_enrollment');
+        if(localStorage.getItem('cached_dept')) document.getElementById('dept').value = localStorage.getItem('cached_dept');
+        if(localStorage.getItem('cached_semester')) document.getElementById('semester').value = localStorage.getItem('cached_semester');
 
-            document.getElementById('configText').innerText = "✓ Backend Target Linked";
+        document.getElementById('configText').innerText = "✓ Backend Target Linked";
 
-            const savedToken = localStorage.getItem('buffered_token');
-            const savedTimestamp = parseInt(localStorage.getItem('buffered_timestamp') || '0');
-            const currentTimestamp = Math.floor(Date.now() / 1000);
-            
-            if (savedToken && (currentTimestamp - savedTimestamp < 300)) {
-                toggleFormInputs(true);
-                document.getElementById('scanBtn').disabled = true;
-                showStatus("✓ Unsent Ticket Located! Tap below to sync your attendance now.", "success");
-                document.getElementById('syncBtn').style.display = 'block';
-            } else {
-                localStorage.removeItem('buffered_token');
-                localStorage.removeItem('buffered_timestamp');
-                toggleFormInputs(false);
-                document.getElementById('scanBtn').disabled = false;
-                document.getElementById('syncBtn').style.display = 'none';
-            }
-        } catch(e) {
-            console.error(e);
+        const savedToken = localStorage.getItem('buffered_token');
+        const savedTimestamp = parseInt(localStorage.getItem('buffered_timestamp') || '0');
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        
+        // ONLY lock the form if there's a valid ticket under 5 minutes old
+        if (savedToken && (currentTimestamp - savedTimestamp < 300)) {
+            toggleFormInputs(true);
+            document.getElementById('scanBtn').disabled = true;
+            showStatus("✓ Unsent Ticket Located! Tap below to sync your attendance now.", "success");
+            document.getElementById('syncBtn').style.display = 'block';
+        } else {
+            // Force wipe and completely unlock
+            localStorage.removeItem('buffered_token');
+            localStorage.removeItem('buffered_timestamp');
             toggleFormInputs(false);
             document.getElementById('scanBtn').disabled = false;
+            document.getElementById('syncBtn').style.display = 'none';
         }
     });
 
@@ -133,11 +126,10 @@
     }
 
     function startScanner() {
-        if (typeof Html5QrcodeScanner === 'undefined') {
-            showStatus("🛑 Engine Error: Scanner library assets not yet ready offline. Reload page online once.", "error");
-            return;
-        }
         document.getElementById('reader').style.display = 'block';
+        // Force inputs to stay unlocked during scan phase unless successful
+        toggleFormInputs(false); 
+        
         html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
         html5QrcodeScanner.render(onScanSuccess, onScanFailure);
     }
@@ -183,9 +175,6 @@
             return;
         }
 
-        const savedToken = localStorage.getItem('buffered_token');
-        const savedTimestamp = localStorage.getItem('buffered_timestamp');
-
         if (!navigator.onLine) {
             showStatus("🛑 Device Offline: Your token remains safely buffered locally, but 5G/Wi-Fi is required to push data to Google Sheets!", "error");
             return;
@@ -197,8 +186,8 @@
             enrollment: enrollment,
             department: dept,
             semester: sem,
-            token: savedToken,
-            scanTime: savedTimestamp,
+            token: localStorage.getItem('buffered_token'),
+            scanTime: localStorage.getItem('buffered_timestamp'),
             deviceId: deviceId
         };
 
@@ -226,6 +215,11 @@
 
     function clearSystemMemory() {
         localStorage.clear();
+        // Fallback layout clean parameters
+        toggleFormInputs(false);
+        document.getElementById('scanBtn').disabled = false;
+        document.getElementById('syncBtn').style.display = 'none';
+        document.getElementById('statusBox').style.display = 'none';
         location.reload();
     }
 
@@ -236,6 +230,7 @@
                 .catch(err => console.log('Service Worker Failed:', err));
         });
     }
+</script>
 </script>
 </body>
 </html>
