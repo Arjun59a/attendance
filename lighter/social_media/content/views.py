@@ -39,7 +39,30 @@ def homepage(request,username) :
 
 
 
-def like_dislike(id) :
+def like_dislike(request,id,username) :
+    user = username
     post_details = Post.objects.get(id=id)
+    
+    if not Postlike.objects.filter(user=user,title=post_details.title).exists() :
+        Postlike.objects.create(
+            user = user ,
+            title = post_details.title
+        )
+    pst_obj = Postlike.objects.get(user=user , title = post_details.title)
 
-    pst = Postlike.objects.get(user=post_details.user,title=post_details.title)
+    if not pst_obj.liked :
+        pst_obj.liked = True
+        post_details.likes += 1
+    else :
+        pst_obj.liked = False
+        post_details.likes -= 1
+    
+    
+    pst_obj.save()
+    post_details.save()
+
+    return redirect(request.META.get("HTTP_REFERER", "/"))
+    
+
+
+

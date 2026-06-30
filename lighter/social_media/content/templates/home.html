@@ -81,8 +81,18 @@
 
 
                 <div class="post-footer">
+                    <form action="{% url 'home_app:like' psts.id username %}" method="POST">
+                        {% csrf_token %}
+                        <button>
+                            {% if psts.likes == 0 %}
+                            ❤️ Like
+                            {% else %}
+                            ❤️{{psts.likes}}
 
-                    <button onclick="">❤️ Like</button>
+                            {% endif %}
+                        </button>
+                    </form>
+                    
 
                     <button>💬 Comment</button>
 

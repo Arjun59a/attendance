@@ -47,7 +47,7 @@
     </select>
 
     <label for="enrollment">Enrollment / Roll Number</label>
-    <input type="text" id="enrollment" placeholder="e.g., 21012011001" required>
+    <input type="text" id="enrollment" placeholder="e.g., 24012021073" required>
 
     <button class="button btn-scan" id="scanBtn" onclick="startScanner()">📷 Scan Classroom QR</button>
     <div id="reader"></div>
@@ -58,18 +58,17 @@
 </div>
 
 <script>
-    // ⚠️ PASTE YOUR COPIED GOOGLE APPS SCRIPT WEB APP URL HERE
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzoDNeJsZf74UbFvWcdwO91bTvE1M4YMfq4DaghsdAD8W4CdsBoK6tKps_qGSRg1PrNaw/exec";
+    // ⚠️ REPLACE WITH YOUR NEW GENERATED DEPLOYMENT URL STRING
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzUshcWPm4AWZ-_QsLtwxzjGKGn24B0QICc4uiV2D9oYE_a8tx-qQGDxh8dXP16_nF0fQ/exec";
+
     let scannedToken = "";
     let html5QrcodeScanner = null;
 
-    // Generate hardware/fingerprint tag for anti-proxy checking
     if (!localStorage.getItem('device_fingerprint')) {
         localStorage.setItem('device_fingerprint', 'DEV-' + Math.random().toString(36).substring(2, 15));
     }
     const deviceId = localStorage.getItem('device_fingerprint');
 
-    // Soft-check local lockout configuration
     const todayStr = new Date().toISOString().split('T')[0];
     if (localStorage.getItem('last_submission_date') === todayStr) {
         showStatus("Notice: This device already has a local submission record for today.", "success");
@@ -122,13 +121,13 @@
 
         const queryString = new URLSearchParams(payload).toString();
 
-        // Switching to cross-origin standard GET method for reliable message intercepting
+        // Safe cross-origin GET network layer intercept configuration
         fetch(GOOGLE_SCRIPT_URL + "?" + queryString, {
             method: 'GET'
         })
         .then(response => response.text())
         .then(responseText => {
-            console.log("Server Response:", responseText);
+            console.log("Server Response Payload:", responseText);
             if (responseText.trim() === "SUCCESS") {
                 showStatus("🎉 Attendance Successfully Logged into Spreadsheet!", "success");
                 document.getElementById('syncBtn').style.display = 'none';
@@ -138,7 +137,7 @@
             }
         })
         .catch(err => {
-            showStatus("Network sync configuration mismatch. Check implementation constraints.", "error");
+            showStatus("Network data configuration mismatch constraint exception.", "error");
             console.error(err);
         });
     }
