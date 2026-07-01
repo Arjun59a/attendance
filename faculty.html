@@ -13,8 +13,16 @@ input,select,button{width:100%;box-sizing:border-box;font:inherit;margin-top:10p
 input,select{border:1px solid #cbd5e1}
 button{border:0;background:#166534;color:white;font-weight:800}
 button.end{background:#991b1b}
-.status{margin-top:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px}
-iframe{display:none}
+button.check{background:#334155}
+button:disabled{opacity:.6}
+.status{margin-top:12px;padding:12px;border-radius:8px;display:flex;align-items:center;gap:10px;
+  background:#f8fafc;border:1px solid #e2e8f0}
+.status.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+.status.err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.spinner{width:16px;height:16px;border:3px solid #cbd5e1;border-top-color:#166534;border-radius:50%;
+  animation:spin .8s linear infinite;display:none;flex-shrink:0}
+.status.loading .spinner{display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -31,39 +39,86 @@ iframe{display:none}
   <option value="Proxy">Proxy</option>
 </select>
 
-<button onclick="sendAction('startSession')">Start Session</button>
-<button class="end" onclick="sendAction('endSession')">End Session</button>
+<button id="startBtn">Start Session</button>
+<button id="endBtn" class="end">End Session</button>
+<button id="checkBtn" class="check">Check Status</button>
 
-<div class="status" id="status">Ready.</div>
-<iframe name="hiddenFrame"></iframe>
+<div class="status" id="statusBox">
+  <span class="spinner"></span>
+  <span id="statusText">Ready. Tap "Check Status" any time to see if a session is live.</span>
+</div>
 </section>
 </main>
 
 <script>
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz8ONnxPB1_Lx2btLyQFcBNDPWFZp9sa94OC5JtsMXRykJ614mmUDJQNbJWEr2feotfZA/exec";
 
-function sendAction(action) {
+const statusBox = document.getElementById("statusBox");
+const statusText = document.getElementById("statusText");
+const startBtn = document.getElementById("startBtn");
+const endBtn = document.getElementById("endBtn");
+const checkBtn = document.getElementById("checkBtn");
+
+function setStatus(msg, kind, loading=false) {
+  statusText.textContent = msg;
+  statusBox.className = "status" + (kind ? " " + kind : "") + (loading ? " loading" : "");
+}
+
+function setButtonsDisabled(disabled) {
+  startBtn.disabled = disabled;
+  endBtn.disabled = disabled;
+  checkBtn.disabled = disabled;
+}
+
+async function callAction(action, extraParams = {}) {
   if (APPS_SCRIPT_URL.includes("PASTE_YOUR")) {
-    status.textContent = "Add Apps Script URL first.";
-    return;
+    setStatus("Add Apps Script URL first.", "err");
+    return null;
+  }
+
+  const sid = sessionId.value.trim();
+  if (!sid) {
+    setStatus("Enter a Session ID first.", "err");
+    return null;
   }
 
   const params = new URLSearchParams({
-    action: action,
+    action,
     facultyPin: pin.value.trim(),
-    sessionId: sessionId.value.trim(),
-    className: className.value.trim(),
-    lectureType: lectureType.value
+    sessionId: sid,
+    ...extraParams
   });
 
-  const url = APPS_SCRIPT_URL + "?" + params.toString();
+  setButtonsDisabled(true);
+  setStatus("Sending " + action + "...", "loading", true);
 
-  status.textContent = action === "startSession"
-    ? "Start request sent. Check Sessions sheet."
-    : "End request sent. Check Sessions sheet.";
+  try {
+    const res = await fetch(APPS_SCRIPT_URL + "?" + params.toString());
+    const data = await res.json();
 
-  hiddenFrame.location.href = url;
+    if (data.ok) {
+      setStatus(data.message || "Done.", "ok");
+    } else {
+      setStatus(data.message || "Something went wrong.", "err");
+    }
+
+    return data;
+  } catch (e) {
+    setStatus("Could not reach the server. Check your internet connection and try again.", "err");
+    return null;
+  } finally {
+    setButtonsDisabled(false);
+  }
 }
+
+startBtn.onclick = () => callAction("startSession", {
+  className: className.value.trim(),
+  lectureType: lectureType.value
+});
+
+endBtn.onclick = () => callAction("endSession");
+
+checkBtn.onclick = () => callAction("getStatus");
 </script>
 </body>
 </html>
