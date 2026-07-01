@@ -42,7 +42,10 @@ h2{font-size:1rem;margin:18px 0 8px}
 </section></main>
 
 <script>
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz8ONnxPB1_Lx2btLyQFcBNDPWFZp9sa94OC5JtsMXRykJ614mmUDJQNbJWEr2feotfZA/exec";
+// Used only as a fallback: old-format QR codes (5 parts, no embedded URL) or manual
+// payloads pasted without a URL will sync here. Every normal scan carries its own
+// faculty's URL now, so this rarely needs to be touched.
+const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz8ONnxPB1_Lx2btLyQFcBNDPWFZp9sa94OC5JtsMXRykJ614mmUDJQNbJWEr2feotfZA/exec";
 
 const deviceKey = "att_device_id";
 const pendingKey = "att_pending";
@@ -63,11 +66,11 @@ let clockOffsetMs = 0; // serverTime - deviceTime, added to every scan timestamp
 
 async function syncClock() {
   if (!navigator.onLine) return;
-  if (APPS_SCRIPT_URL.includes("PASTE_YOUR")) return;
+  if (DEFAULT_APPS_SCRIPT_URL.includes("PASTE_YOUR")) return;
 
   try {
     const before = Date.now();
-    const res = await fetch(APPS_SCRIPT_URL + "?action=getServerTime");
+    const res = await fetch(DEFAULT_APPS_SCRIPT_URL + "?action=getServerTime");
     const after = Date.now();
     const data = await res.json();
 
@@ -109,10 +112,12 @@ function renderPending(){
 
   el.innerHTML = list.map((item, index) => {
     const capturedReadable = new Date(item.capturedAt).toLocaleString();
+    const targetShort = (item.targetUrl || "").slice(-10) || "default";
     return `
       <div class="pendingItem">
         <b>${item.enrollmentId} — ${item.className}</b>
         <div class="row"><span>Session ID</span><span>${item.sessionId}</span></div>
+        <div class="row"><span>Faculty sheet</span><span>...${targetShort}</span></div>
         <div class="row"><span>Scanned at</span><span>${capturedReadable}</span></div>
         <div class="row"><span>Raw capturedAt</span><span>${item.capturedAt}</span></div>
         <button onclick="removePending(${index})">Remove this scan</button>
@@ -135,8 +140,11 @@ function removePending(index){
 
 function parsePayload(raw) {
   const p = raw.trim().split("|");
-  if (p.length !== 5) throw new Error("Invalid QR payload.");
-  return { token:p[0], sessionId:p[1], startTime:p[2], endTime:p[3], isRunning:p[4] };
+  if (p.length !== 5 && p.length !== 6) throw new Error("Invalid QR payload.");
+  return {
+    token:p[0], sessionId:p[1], startTime:p[2], endTime:p[3], isRunning:p[4],
+    targetUrl: p[5] || DEFAULT_APPS_SCRIPT_URL
+  };
 }
 
 function sessionLockKey(parsed) {
@@ -211,39 +219,68 @@ async function syncNow() {
   const list = pending();
   if (!list.length) return status("Nothing to sync.");
   if (!navigator.onLine) return status("Offline. Data is safe on this phone.");
-  if (APPS_SCRIPT_URL.includes("PASTE_YOUR")) return status("Add Apps Script URL first.");
 
   sync.disabled = true; scan.disabled = true; saveManual.disabled = true;
   sync.textContent = "Syncing...";
-  status("Syncing attendance. Please wait...", true);
+  status("Syncing " + list.length + " scan(s). Please wait...", true);
 
-  const left = [];
+  // Group scans by which faculty's sheet they belong to — each faculty has their
+  // own Apps Script URL/spreadsheet, so each group needs its own separate request.
+  const groups = new Map();
+  list.forEach((item, originalIndex) => {
+    const url = item.targetUrl || DEFAULT_APPS_SCRIPT_URL;
+    if (!groups.has(url)) groups.set(url, []);
+    groups.get(url).push({ item, originalIndex });
+  });
 
-  for (const item of list) {
+  const stillPending = new Array(list.length);
+  list.forEach((item, i) => { stillPending[i] = item; }); // default: assume nothing synced yet
+  let anyFail = "";
+
+  for (const [url, entries] of groups.entries()) {
+    const sendItems = entries.map(e => {
+      const copy = {...e.item};
+      delete copy.lockKey;
+      delete copy.targetUrl;
+      return copy;
+    });
+
     try {
-      const sendItem = {...item};
-      delete sendItem.lockKey;
+      const res = await fetch(url, {
+        method: "POST",
+        body: new URLSearchParams({ action: "syncBatch", items: JSON.stringify(sendItems) })
+      });
+      const data = await res.json();
 
-      const res = await fetch(APPS_SCRIPT_URL, { method:"POST", body:new URLSearchParams(sendItem) });
-      const json = await res.json();
-
-      if (!json.ok) {
-        left.push(item);
-        status(json.message);
+      if (data.ok && Array.isArray(data.results)) {
+        entries.forEach((e, i) => {
+          const r = data.results[i];
+          if (r && r.ok) {
+            stillPending[e.originalIndex] = null; // synced — remove from pending
+          } else if (r && r.message) {
+            anyFail = r.message;
+          }
+        });
+      } else {
+        anyFail = data.message || "Sync failed for one faculty's session.";
       }
-    } catch(e) {
-      left.push(item);
-      status("Sync failed. Try again.");
-      break;
+    } catch (e) {
+      anyFail = "Could not reach one faculty's server. Check your connection.";
     }
   }
+
+  const left = stillPending.filter(x => x !== null);
 
   setPending(left);
   sync.disabled = false; scan.disabled = false; saveManual.disabled = false;
   sync.textContent = "Sync Saved Attendance";
   document.getElementById("statusBox").classList.remove("loading");
 
-  if (!left.length) status("Synced successfully. Attendance marked Present.");
+  if (!left.length) {
+    status("Synced successfully. Attendance marked Present.");
+  } else {
+    status(left.length + " scan(s) still pending: " + (anyFail || "see details above."));
+  }
 }
 
 scan.onclick = () => startScan().catch(e => status(e.message));
