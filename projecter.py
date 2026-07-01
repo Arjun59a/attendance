@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 import qrcode
 
 SECRET_SALT = "CHANGE_ME_TO_A_LONG_RANDOM_SECRET"
-BRACKET_SECONDS = 3
+BRACKET_SECONDS = 3   # must match BRACKET_SECONDS in script.gs
 OUTPUT_FILE = "attendance_qr.png"
 
 SESSION_ID = "CLASS-01"
@@ -42,6 +42,7 @@ print("Session ends UTC:", SESSION["end"])
 print("India start time:", india_time(session_start))
 print("India end time:", india_time(session_end))
 print("QR file:", OUTPUT_FILE)
+print("QR refresh interval:", BRACKET_SECONDS, "seconds")
 
 last = ""
 while True:
