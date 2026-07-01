@@ -59,6 +59,37 @@ device.textContent = "Device: " + deviceId.slice(0,8);
 enroll.value = localStorage.getItem(enrollKey) || "";
 className.value = localStorage.getItem(classKey) || "";
 
+let clockOffsetMs = 0; // serverTime - deviceTime, added to every scan timestamp we record
+
+async function syncClock() {
+  if (!navigator.onLine) return;
+  if (APPS_SCRIPT_URL.includes("PASTE_YOUR")) return;
+
+  try {
+    const before = Date.now();
+    const res = await fetch(APPS_SCRIPT_URL + "?action=getServerTime");
+    const after = Date.now();
+    const data = await res.json();
+
+    if (data.ok && data.serverTime) {
+      // account for the small delay the request itself took
+      const roundTrip = after - before;
+      const estimatedServerNow = data.serverTime + (roundTrip / 2);
+      clockOffsetMs = estimatedServerNow - after;
+    }
+  } catch (e) {
+    // If this fails, we just fall back to the phone's own clock — not fatal.
+  }
+}
+
+function correctedNow() {
+  return new Date(Date.now() + clockOffsetMs);
+}
+
+syncClock();
+setInterval(syncClock, 5 * 60 * 1000); // re-sync every 5 minutes in case drift changes
+window.addEventListener("online", syncClock);
+
 function status(msg, loading=false){
   document.getElementById("status").textContent = msg;
   document.getElementById("statusBox").classList.toggle("loading", loading);
@@ -131,7 +162,7 @@ function savePayload(raw) {
     enrollmentId,
     className: cls,
     deviceId,
-    capturedAt: new Date().toISOString(),
+    capturedAt: correctedNow().toISOString(),
     localDate: localDateKey(),
     rawPayload: raw.trim(),
     lockKey
