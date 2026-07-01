@@ -16,6 +16,11 @@ video{width:78%;max-width:280px;aspect-ratio:1;display:block;margin:14px auto 4p
 .status{margin-top:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;min-height:48px;display:flex;align-items:center;gap:10px}
 .spinner{width:18px;height:18px;border:3px solid #cbd5e1;border-top-color:#166534;border-radius:50%;animation:spin .8s linear infinite;display:none}
 .status.loading .spinner{display:block}@keyframes spin{to{transform:rotate(360deg)}}
+h2{font-size:1rem;margin:18px 0 8px}
+.pendingItem{padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-top:8px;font-size:.9rem;background:#f8fafc}
+.pendingItem b{display:block;font-size:.95rem;margin-bottom:2px}
+.pendingItem .row{display:flex;justify-content:space-between;color:#475569;margin-top:2px}
+.pendingEmpty{color:#64748b;font-size:.9rem;padding:8px 0}
 </style>
 </head>
 <body>
@@ -30,6 +35,9 @@ video{width:78%;max-width:280px;aspect-ratio:1;display:block;margin:14px auto 4p
 <textarea id="manual" placeholder="Paste QR payload if camera scan fails"></textarea>
 <button id="saveManual" class="secondary">Save Manual Payload</button>
 <div class="status" id="statusBox"><span class="spinner"></span><span id="status">Ready.</span></div>
+
+<h2>Pending Scans (not yet synced)</h2>
+<div id="pendingList"></div>
 </section></main>
 
 <script>
@@ -56,7 +64,29 @@ function status(msg, loading=false){
 }
 
 function pending(){ return JSON.parse(localStorage.getItem(pendingKey) || "[]"); }
-function setPending(x){ localStorage.setItem(pendingKey, JSON.stringify(x)); }
+function setPending(x){ localStorage.setItem(pendingKey, JSON.stringify(x)); renderPending(); }
+
+function renderPending(){
+  const list = pending();
+  const el = document.getElementById("pendingList");
+
+  if (!list.length) {
+    el.innerHTML = '<div class="pendingEmpty">No pending scans right now.</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(item => {
+    const capturedReadable = new Date(item.capturedAt).toLocaleString();
+    return `
+      <div class="pendingItem">
+        <b>${item.enrollmentId} — ${item.className}</b>
+        <div class="row"><span>Session ID</span><span>${item.sessionId}</span></div>
+        <div class="row"><span>Scanned at</span><span>${capturedReadable}</span></div>
+        <div class="row"><span>Raw capturedAt</span><span>${item.capturedAt}</span></div>
+      </div>
+    `;
+  }).join("");
+}
 
 function parsePayload(raw) {
   const p = raw.trim().split("|");
@@ -174,6 +204,8 @@ async function syncNow() {
 scan.onclick = () => startScan().catch(e => status(e.message));
 sync.onclick = syncNow;
 saveManual.onclick = () => savePayload(manual.value);
+
+renderPending();
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 </script>
