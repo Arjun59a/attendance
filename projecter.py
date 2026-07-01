@@ -1,54 +1,125 @@
 import hashlib
+import json
 import time
+import urllib.request
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 import qrcode
 
+# ---- must match script.gs exactly ----
 SECRET_SALT = "CHANGE_ME_TO_A_LONG_RANDOM_SECRET"
-BRACKET_SECONDS = 3   # must match BRACKET_SECONDS in script.gs
+BRACKET_SECONDS = 3
+
+# Paste the SAME Apps Script URL used in portal.html / faculty.html
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz8ONnxPB1_Lx2btLyQFcBNDPWFZp9sa94OC5JtsMXRykJ614mmUDJQNbJWEr2feotfZA/exec"
+
 OUTPUT_FILE = "attendance_qr.png"
+WAITING_FILE = "attendance_qr_waiting.png"
 
-SESSION_ID = "CLASS-01"
-CLASS_DURATION_MINUTES = 60
+POLL_SECONDS = 5          # how often to ask the sheet "who is running right now"
+QR_TICK_SECONDS = 0.25    # how often to check if the QR needs refreshing
 
-session_start = datetime.now(timezone.utc)
-session_end = session_start + timedelta(minutes=CLASS_DURATION_MINUTES)
 
-SESSION = {
-    "id": SESSION_ID,
-    "start": session_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "end": session_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "running": "0"
-}
+def fetch_active_session():
+    """Ask script.gs which session is currently RUNNING. Returns dict or None."""
+    url = APPS_SCRIPT_URL + "?" + urllib.parse.urlencode({"action": "getActiveSession"})
+    try:
+        with urllib.request.urlopen(url, timeout=10) as res:
+            data = json.loads(res.read().decode("utf-8"))
+    except Exception as e:
+        print("Could not reach the server:", e)
+        return None
+
+    if not data.get("ok"):
+        print("Server error:", data.get("message"))
+        return None
+
+    if not data.get("active"):
+        return None
+
+    return {
+        "id": data["sessionId"],
+        "start": data["startTime"],
+        "end": data.get("endTime", ""),
+        "running": "1",
+        "className": data.get("className", ""),
+        "lectureType": data.get("lectureType", "")
+    }
+
 
 def current_bracket():
     return int(datetime.now(timezone.utc).timestamp()) // BRACKET_SECONDS
 
+
 def token_for(session, bracket):
-    raw = "|".join([SECRET_SALT, str(bracket), session["id"], session["start"], session["end"], session["running"]])
+    raw = "|".join([
+        SECRET_SALT, str(bracket), session["id"],
+        session["start"], session["end"], session["running"]
+    ])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
+
 def payload_for(session):
-    return "|".join([token_for(session, current_bracket()), session["id"], session["start"], session["end"], session["running"]])
+    return "|".join([
+        token_for(session, current_bracket()),
+        session["id"], session["start"], session["end"], session["running"]
+    ])
 
-def write_qr(payload):
-    qrcode.make(payload).save(OUTPUT_FILE)
 
-def india_time(dt):
+def write_qr(payload, filename=OUTPUT_FILE):
+    qrcode.make(payload).save(filename)
+
+
+def write_waiting_image():
+    qrcode.make("NO_ACTIVE_SESSION").save(WAITING_FILE)
+
+
+def india_time_str(iso_utc_str):
+    dt = datetime.strptime(iso_utc_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     return (dt + timedelta(hours=5, minutes=30)).strftime("%d-%m-%Y %I:%M:%S %p")
 
-print("Session ID:", SESSION_ID)
-print("Session started UTC:", SESSION["start"])
-print("Session ends UTC:", SESSION["end"])
-print("India start time:", india_time(session_start))
-print("India end time:", india_time(session_end))
-print("QR file:", OUTPUT_FILE)
-print("QR refresh interval:", BRACKET_SECONDS, "seconds")
 
-last = ""
+print("Waiting for faculty to start a session...")
+print("Polling:", APPS_SCRIPT_URL)
+
+active_session = None
+last_polled = 0
+last_payload = ""
+
 while True:
-    payload = payload_for(SESSION)
-    if payload != last:
-        write_qr(payload)
-        print("QR updated:", payload)
-        last = payload
-    time.sleep(0.25)
+    now = time.time()
+
+    if now - last_polled >= POLL_SECONDS:
+        last_polled = now
+        found = fetch_active_session()
+
+        if found and (not active_session or found["id"] != active_session["id"] or found["start"] != active_session["start"]):
+            active_session = found
+            last_payload = ""
+            print("Active session found:", active_session["id"],
+                  "-", active_session["className"], "-", active_session["lectureType"],
+                  "- started", india_time_str(active_session["start"]))
+
+        elif not found and active_session:
+            print("Session ended or no longer running. Waiting for next session...")
+            active_session = None
+            write_waiting_image()
+            last_payload = ""
+
+        elif not found and not active_session:
+            # still nothing running, keep the waiting image up
+            pass
+
+    if active_session:
+        payload = payload_for(active_session)
+        if payload != last_payload:
+            write_qr(payload)
+            print("QR updated:", payload)
+            last_payload = payload
+    else:
+        # no active session yet — waiting image already written when we detected the change
+        if last_payload != "WAITING":
+            write_waiting_image()
+            last_payload = "WAITING"
+
+    time.sleep(QR_TICK_SECONDS)

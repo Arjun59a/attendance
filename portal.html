@@ -20,6 +20,7 @@ h2{font-size:1rem;margin:18px 0 8px}
 .pendingItem{padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-top:8px;font-size:.9rem;background:#f8fafc}
 .pendingItem b{display:block;font-size:.95rem;margin-bottom:2px}
 .pendingItem .row{display:flex;justify-content:space-between;color:#475569;margin-top:2px}
+.pendingItem button{width:auto;margin-top:8px;padding:8px 12px;font-size:.85rem;background:#991b1b}
 .pendingEmpty{color:#64748b;font-size:.9rem;padding:8px 0}
 </style>
 </head>
@@ -75,7 +76,7 @@ function renderPending(){
     return;
   }
 
-  el.innerHTML = list.map(item => {
+  el.innerHTML = list.map((item, index) => {
     const capturedReadable = new Date(item.capturedAt).toLocaleString();
     return `
       <div class="pendingItem">
@@ -83,9 +84,22 @@ function renderPending(){
         <div class="row"><span>Session ID</span><span>${item.sessionId}</span></div>
         <div class="row"><span>Scanned at</span><span>${capturedReadable}</span></div>
         <div class="row"><span>Raw capturedAt</span><span>${item.capturedAt}</span></div>
+        <button onclick="removePending(${index})">Remove this scan</button>
       </div>
     `;
   }).join("");
+}
+
+function removePending(index){
+  const list = pending();
+  const item = list[index];
+  if (!item) return;
+
+  if (item.lockKey) localStorage.removeItem(item.lockKey);
+
+  list.splice(index, 1);
+  setPending(list);
+  status("Removed. You can scan this session again now.");
 }
 
 function parsePayload(raw) {
