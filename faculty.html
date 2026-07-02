@@ -27,6 +27,48 @@ button:disabled{opacity:.6}
 #qrInfo b{color:#166534}
 .who{text-align:center;color:#64748b;font-size:.9rem;margin-top:-4px;margin-bottom:10px}
 .small{font-size:.85rem;color:#64748b;margin-top:8px;text-align:center}
+
+body.projector{background:#fff}
+body.projector main{max-width:none;padding:0}
+body.projector section{
+  min-height:100vh;
+  border-radius:0;
+  box-shadow:none;
+  display:grid;
+  grid-template-rows:auto 1fr auto;
+}
+body.projector h1,
+body.projector .who,
+body.projector #selectView,
+body.projector #logoutBtn,
+body.projector #statusBox,
+body.projector #debugText{display:none}
+body.projector #qrView{
+  display:grid!important;
+  min-height:100vh;
+  place-items:center;
+}
+body.projector #qrBox{
+  margin:auto;
+  padding:24px;
+}
+body.projector #qrBox canvas,
+body.projector #qrBox img{
+  width:min(82vmin,720px)!important;
+  height:min(82vmin,720px)!important;
+}
+body.projector #qrInfo{
+  font-size:clamp(1.2rem,3vw,2rem);
+  margin-top:14px;
+}
+body.projector #endBtn{
+  position:fixed;
+  top:16px;
+  right:16px;
+  width:auto;
+  padding:10px 14px;
+  z-index:10;
+}
 </style>
 </head>
 <body>
@@ -41,8 +83,10 @@ button:disabled{opacity:.6}
 </div>
 
 <div id="qrView" style="display:none">
-  <div id="qrBox"></div>
-  <div id="qrInfo"></div>
+  <div>
+    <div id="qrBox"></div>
+    <div id="qrInfo"></div>
+  </div>
   <button id="endBtn" class="end">End Session</button>
 </div>
 
@@ -104,7 +148,11 @@ function normalizeAssignment(a) {
 
     className: String(
       a.className ||
+      a.subjectName ||
       a["className"] ||
+      a["subjectName"] ||
+      a["Subject Name"] ||
+      a["subject name"] ||
       a["Class Name"] ||
       a["class name"] ||
       a["Class"] ||
@@ -161,7 +209,7 @@ async function loadAssignments() {
     assignmentSelect.innerHTML = "";
 
     if (!assignments.length) {
-      setStatus("No valid classes assigned. Check FacultyAssignments sheet headers and rows.", "err");
+      setStatus("No valid classes assigned. Check FacultyAssignments sheet.", "err");
       debugText.textContent = "Required headers: username, sessionId, className, lectureType";
       startBtn.disabled = true;
       return;
@@ -203,6 +251,7 @@ startBtn.onclick = async () => {
       token: token,
       sessionId: chosen.sessionId,
       className: chosen.className,
+      subjectName: chosen.className,
       lectureType: chosen.lectureType
     });
 
@@ -213,6 +262,7 @@ startBtn.onclick = async () => {
       activeSessionId = chosen.sessionId;
       selectView.style.display = "none";
       qrView.style.display = "block";
+      document.body.classList.add("projector");
       setStatus(data.message || "Session started.", "ok");
       startQrPolling();
     } else {
@@ -255,6 +305,7 @@ endBtn.onclick = async () => {
 
   stopQrPolling();
   activeSessionId = "";
+  document.body.classList.remove("projector");
   qrView.style.display = "none";
   selectView.style.display = "block";
   startBtn.disabled = false;
@@ -270,7 +321,7 @@ logoutBtn.onclick = () => {
 
 function startQrPolling() {
   pollQr();
-  pollTimer = setInterval(pollQr, 1500);
+  pollTimer = setInterval(pollQr, 1000);
 }
 
 function stopQrPolling() {
@@ -303,14 +354,15 @@ async function pollQr() {
         box.innerHTML = "";
         new QRCode(box, {
           text: data.payload,
-          width: 260,
-          height: 260,
-          correctLevel: QRCode.CorrectLevel.M
+          width: 720,
+          height: 720,
+          correctLevel: QRCode.CorrectLevel.H
         });
       }
     } else if (data.ok && !data.active) {
       setStatus("Session is no longer running.", "err");
       stopQrPolling();
+      document.body.classList.remove("projector");
       qrView.style.display = "none";
       selectView.style.display = "block";
       startBtn.disabled = false;
