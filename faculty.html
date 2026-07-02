@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Faculty Attendance</title>
+<title>Faculty Session</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 body{margin:0;font-family:system-ui;background:#eef2f7;color:#172033}
 main{max-width:480px;margin:auto;min-height:100vh;padding:18px;display:grid;place-items:center}
 section{width:100%;background:white;border-radius:8px;padding:18px;box-shadow:0 16px 42px #0002}
 h1{margin:0 0 12px}
-input,select,button{width:100%;box-sizing:border-box;font:inherit;margin-top:10px;padding:13px;border-radius:8px}
-input,select{border:1px solid #cbd5e1}
+select,button{width:100%;box-sizing:border-box;font:inherit;margin-top:10px;padding:13px;border-radius:8px}
+select{border:1px solid #cbd5e1}
 button{border:0;background:#166534;color:white;font-weight:800}
 button.end{background:#991b1b}
-button.check{background:#334155}
+button.logout{background:#334155}
 button:disabled{opacity:.6}
 .status{margin-top:12px;padding:12px;border-radius:8px;display:flex;align-items:center;gap:10px;
   background:#f8fafc;border:1px solid #e2e8f0}
@@ -23,102 +24,202 @@ button:disabled{opacity:.6}
   animation:spin .8s linear infinite;display:none;flex-shrink:0}
 .status.loading .spinner{display:block}
 @keyframes spin{to{transform:rotate(360deg)}}
+#qrBox{background:white;padding:16px;border-radius:12px;display:flex;justify-content:center;margin-top:16px}
+#qrInfo{text-align:center;font-size:1.1rem;margin-top:10px}
+#qrInfo b{color:#166534}
+.who{text-align:center;color:#64748b;font-size:.9rem;margin-top:-4px}
 </style>
 </head>
 <body>
 <main>
 <section>
 <h1>Faculty Session</h1>
+<div class="who" id="whoami"></div>
 
-<input id="pin" placeholder="Faculty PIN" value="1234">
-<input id="sessionId" placeholder="Session ID" value="CLASS-01">
-<input id="className" placeholder="Class" value="BCA-A">
+<div id="selectView">
+  <select id="assignmentSelect"></select>
+  <button id="startBtn">Start Session</button>
+</div>
 
-<select id="lectureType">
-  <option value="Regular">Regular</option>
-  <option value="Proxy">Proxy</option>
-</select>
-
-<button id="startBtn">Start Session</button>
-<button id="endBtn" class="end">End Session</button>
-<button id="checkBtn" class="check">Check Status</button>
+<div id="qrView" style="display:none">
+  <div id="qrBox"></div>
+  <div id="qrInfo"></div>
+  <button id="endBtn" class="end">End Session</button>
+</div>
 
 <div class="status" id="statusBox">
   <span class="spinner"></span>
-  <span id="statusText">Ready. Tap "Check Status" any time to see if a session is live.</span>
+  <span id="statusText">Loading your assigned classes...</span>
 </div>
+
+<button id="logoutBtn" class="logout">Logout</button>
 </section>
 </main>
 
 <script>
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz8ONnxPB1_Lx2btLyQFcBNDPWFZp9sa94OC5JtsMXRykJ614mmUDJQNbJWEr2feotfZA/exec";
+const sessionRaw = sessionStorage.getItem("att_faculty_session");
+if (!sessionRaw) {
+  window.location.href = "login.html";
+}
+const mySession = JSON.parse(sessionRaw || "{}");
+const apiUrl = mySession.apiUrl;
+const username = mySession.username;
+const token = mySession.token;
+
+document.getElementById("whoami").textContent = "Logged in as: " + username;
 
 const statusBox = document.getElementById("statusBox");
 const statusText = document.getElementById("statusText");
+const selectView = document.getElementById("selectView");
+const qrView = document.getElementById("qrView");
+const assignmentSelect = document.getElementById("assignmentSelect");
 const startBtn = document.getElementById("startBtn");
 const endBtn = document.getElementById("endBtn");
-const checkBtn = document.getElementById("checkBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+
+let assignments = [];
+let activeSessionId = "";
+let pollTimer = null;
+let lastPayload = "";
 
 function setStatus(msg, kind, loading=false) {
   statusText.textContent = msg;
   statusBox.className = "status" + (kind ? " " + kind : "") + (loading ? " loading" : "");
 }
 
-function setButtonsDisabled(disabled) {
-  startBtn.disabled = disabled;
-  endBtn.disabled = disabled;
-  checkBtn.disabled = disabled;
-}
-
-async function callAction(action, extraParams = {}) {
-  if (APPS_SCRIPT_URL.includes("PASTE_YOUR")) {
-    setStatus("Add Apps Script URL first.", "err");
-    return null;
-  }
-
-  const sid = sessionId.value.trim();
-  if (!sid) {
-    setStatus("Enter a Session ID first.", "err");
-    return null;
-  }
-
-  const params = new URLSearchParams({
-    action,
-    facultyPin: pin.value.trim(),
-    sessionId: sid,
-    ...extraParams
-  });
-
-  setButtonsDisabled(true);
-  setStatus("Sending " + action + "...", "loading", true);
+async function loadAssignments() {
+  setStatus("Loading your assigned classes...", "", true);
 
   try {
-    const res = await fetch(APPS_SCRIPT_URL + "?" + params.toString());
+    const params = new URLSearchParams({ action:"getAssignments", username, token });
+    const res = await fetch(apiUrl + "?" + params.toString());
+    const data = await res.json();
+
+    if (!data.ok) {
+      setStatus(data.message || "Could not load assignments.", "err");
+      if ((data.message || "").includes("log in")) {
+        sessionStorage.removeItem("att_faculty_session");
+        setTimeout(() => window.location.href = "login.html", 1500);
+      }
+      return;
+    }
+
+    assignments = data.assignments || [];
+    assignmentSelect.innerHTML = "";
+
+    if (!assignments.length) {
+      setStatus("No classes are assigned to your account yet. Contact admin.", "err");
+      startBtn.disabled = true;
+      return;
+    }
+
+    assignments.forEach((a, i) => {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = a.className + " — " + a.lectureType + " (" + a.sessionId + ")";
+      assignmentSelect.appendChild(opt);
+    });
+
+    startBtn.disabled = false;
+    setStatus("Ready. Pick a class and tap Start Session.");
+  } catch (e) {
+    setStatus("Could not reach the server. Check your connection.", "err");
+  }
+}
+
+startBtn.onclick = async () => {
+  const chosen = assignments[assignmentSelect.value];
+  if (!chosen) return;
+
+  startBtn.disabled = true;
+  setStatus("Starting session...", "", true);
+
+  try {
+    const params = new URLSearchParams({
+      action:"startSession", username, token,
+      sessionId: chosen.sessionId, className: chosen.className, lectureType: chosen.lectureType
+    });
+    const res = await fetch(apiUrl + "?" + params.toString());
     const data = await res.json();
 
     if (data.ok) {
-      setStatus(data.message || "Done.", "ok");
+      activeSessionId = chosen.sessionId;
+      selectView.style.display = "none";
+      qrView.style.display = "block";
+      setStatus(data.message, "ok");
+      startQrPolling();
     } else {
-      setStatus(data.message || "Something went wrong.", "err");
+      setStatus(data.message || "Could not start session.", "err");
+      startBtn.disabled = false;
     }
-
-    return data;
   } catch (e) {
-    setStatus("Could not reach the server. Check your internet connection and try again.", "err");
-    return null;
-  } finally {
-    setButtonsDisabled(false);
+    setStatus("Could not reach the server. Check your connection.", "err");
+    startBtn.disabled = false;
+  }
+};
+
+endBtn.onclick = async () => {
+  endBtn.disabled = true;
+  setStatus("Ending session...", "", true);
+
+  try {
+    const params = new URLSearchParams({ action:"endSession", username, token, sessionId: activeSessionId });
+    const res = await fetch(apiUrl + "?" + params.toString());
+    const data = await res.json();
+
+    setStatus(data.message || "Session ended.", data.ok ? "ok" : "err");
+  } catch (e) {
+    setStatus("Could not reach the server, but stopping QR display.", "err");
+  }
+
+  stopQrPolling();
+  qrView.style.display = "none";
+  selectView.style.display = "block";
+  startBtn.disabled = false;
+  endBtn.disabled = false;
+  loadAssignments();
+};
+
+logoutBtn.onclick = () => {
+  stopQrPolling();
+  sessionStorage.removeItem("att_faculty_session");
+  window.location.href = "login.html";
+};
+
+function startQrPolling() {
+  pollQr();
+  pollTimer = setInterval(pollQr, 1500);
+}
+
+function stopQrPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+  lastPayload = "";
+}
+
+async function pollQr() {
+  try {
+    const params = new URLSearchParams({ action:"getCurrentPayload", sessionId: activeSessionId });
+    const res = await fetch(apiUrl + "?" + params.toString());
+    const data = await res.json();
+
+    if (data.ok && data.active) {
+      document.getElementById("qrInfo").innerHTML =
+        "<b>" + data.lectureType + "</b> — " + data.className + " (" + data.sessionId + ")";
+
+      if (data.payload !== lastPayload) {
+        lastPayload = data.payload;
+        const box = document.getElementById("qrBox");
+        box.innerHTML = "";
+        new QRCode(box, { text:data.payload, width:260, height:260, correctLevel:QRCode.CorrectLevel.M });
+      }
+    }
+  } catch (e) {
+    // silent — try again next poll
   }
 }
 
-startBtn.onclick = () => callAction("startSession", {
-  className: className.value.trim(),
-  lectureType: lectureType.value
-});
-
-endBtn.onclick = () => callAction("endSession");
-
-checkBtn.onclick = () => callAction("getStatus");
+loadAssignments();
 </script>
 </body>
 </html>

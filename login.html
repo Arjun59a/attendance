@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Faculty Login</title>
+<style>
+body{margin:0;font-family:system-ui;background:#eef2f7;color:#172033}
+main{max-width:420px;margin:auto;min-height:100vh;padding:18px;display:grid;place-items:center}
+section{width:100%;background:white;border-radius:8px;padding:24px;box-shadow:0 16px 42px #0002}
+h1{margin:0 0 16px;text-align:center}
+input,select,button{width:100%;box-sizing:border-box;font:inherit;margin-top:10px;padding:13px;border-radius:8px}
+input,select{border:1px solid #cbd5e1}
+button{border:0;background:#166534;color:white;font-weight:800}
+button:disabled{opacity:.6}
+.status{margin-top:14px;padding:12px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;min-height:20px}
+.status.err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+</style>
+</head>
+<body>
+<main><section>
+<h1>Faculty Login</h1>
+
+<select id="facultySelect"></select>
+<input id="username" placeholder="Username">
+<input id="password" placeholder="Password" type="password">
+<button id="loginBtn">Login</button>
+
+<div class="status" id="statusBox">Enter your details to continue.</div>
+</section></main>
+
+<script>
+// FACULTY DIRECTORY — same list as faculty.html. Add one line per shared sheet here.
+const FACULTY_DIRECTORY = [
+  { name: "Prof. Example — Sheet 1", url: "https://script.google.com/macros/s/AKfycbz8ONnxPB1_Lx2btLyQFcBNDPWFZp9sa94OC5JtsMXRykJ614mmUDJQNbJWEr2feotfZA/exec" }
+  // { name: "Second sheet", url: "https://script.google.com/macros/s/.../exec" },
+];
+
+const facultySelect = document.getElementById("facultySelect");
+FACULTY_DIRECTORY.forEach((f, i) => {
+  const opt = document.createElement("option");
+  opt.value = i;
+  opt.textContent = f.name;
+  facultySelect.appendChild(opt);
+});
+
+const statusBox = document.getElementById("statusBox");
+const loginBtn = document.getElementById("loginBtn");
+
+function setStatus(msg, isErr) {
+  statusBox.textContent = msg;
+  statusBox.className = "status" + (isErr ? " err" : "");
+}
+
+loginBtn.onclick = async () => {
+  const apiUrl = FACULTY_DIRECTORY[facultySelect.value].url;
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!username || !password) {
+    return setStatus("Enter username and password.", true);
+  }
+
+  loginBtn.disabled = true;
+  setStatus("Logging in...");
+
+  try {
+    const params = new URLSearchParams({ action:"login", username, password });
+    const res = await fetch(apiUrl + "?" + params.toString());
+    const data = await res.json();
+
+    if (data.ok) {
+      sessionStorage.setItem("att_faculty_session", JSON.stringify({
+        apiUrl, username: data.username, token: data.token
+      }));
+      setStatus("Login successful. Redirecting...");
+      window.location.href = "faculty.html";
+    } else {
+      setStatus(data.message || "Login failed.", true);
+    }
+  } catch (e) {
+    setStatus("Could not reach the server. Check your connection.", true);
+  }
+
+  loginBtn.disabled = false;
+};
+</script>
+</body>
+</html>
