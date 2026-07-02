@@ -260,11 +260,9 @@ startBtn.onclick = async () => {
 
     if (data.ok) {
       activeSessionId = chosen.sessionId;
-      selectView.style.display = "none";
-      qrView.style.display = "block";
-      document.body.classList.add("projector");
-      setStatus(data.message || "Session started.", "ok");
-      startQrPolling();
+sessionStorage.setItem("att_active_session_id", activeSessionId);
+setStatus(data.message || "Session started.", "ok");
+window.location.href = "qr.html";
     } else {
       setStatus(data.message || "Could not start session.", "err");
       debugText.textContent = "Sent: " + chosen.sessionId + " / " + chosen.className + " / " + chosen.lectureType;

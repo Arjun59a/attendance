@@ -1,0 +1,212 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Session QR</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+html,body{
+  margin:0;
+  width:100%;
+  height:100%;
+  background:#ffffff;
+  color:#111827;
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  overflow:hidden;
+}
+
+#screen{
+  width:100vw;
+  height:100vh;
+  display:grid;
+  grid-template-rows:auto 1fr auto;
+  place-items:center;
+  padding:10px;
+  box-sizing:border-box;
+}
+
+#top{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:42px;
+  font-size:clamp(18px,2.2vw,32px);
+  font-weight:800;
+  text-align:center;
+}
+
+#qrBox{
+  display:grid;
+  place-items:center;
+  background:#fff;
+  padding:12px;
+}
+
+#qrBox canvas,
+#qrBox img{
+  width:min(88vmin,900px)!important;
+  height:min(88vmin,900px)!important;
+  image-rendering:pixelated;
+}
+
+#info{
+  min-height:42px;
+  font-size:clamp(16px,1.8vw,26px);
+  font-weight:700;
+  text-align:center;
+  color:#166534;
+}
+
+#endBtn{
+  position:fixed;
+  right:14px;
+  top:14px;
+  width:auto;
+  border:0;
+  border-radius:8px;
+  padding:10px 14px;
+  background:#991b1b;
+  color:white;
+  font:inherit;
+  font-weight:800;
+  z-index:5;
+}
+
+#status{
+  position:fixed;
+  left:14px;
+  bottom:14px;
+  max-width:46vw;
+  padding:9px 11px;
+  border-radius:8px;
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  color:#334155;
+  font-size:14px;
+}
+
+@media (max-width:700px){
+  #qrBox canvas,
+  #qrBox img{
+    width:92vw!important;
+    height:92vw!important;
+  }
+}
+</style>
+</head>
+<body>
+<button id="endBtn">End Session</button>
+
+<div id="screen">
+  <div id="top">Attendance QR</div>
+  <div id="qrBox"></div>
+  <div id="info">Loading session...</div>
+</div>
+
+<div id="status">Starting...</div>
+
+<script>
+const sessionRaw = sessionStorage.getItem("att_faculty_session");
+if (!sessionRaw) {
+  window.location.href = "login.html";
+}
+
+const mySession = JSON.parse(sessionRaw || "{}");
+const apiUrl = mySession.apiUrl;
+const username = mySession.username;
+const token = mySession.token;
+
+const activeSessionId = sessionStorage.getItem("att_active_session_id");
+
+if (!activeSessionId) {
+  window.location.href = "faculty.html";
+}
+
+let lastPayload = "";
+let pollTimer = null;
+
+function setStatus(msg){
+  document.getElementById("status").textContent = msg;
+}
+
+function drawQr(payload){
+  const box = document.getElementById("qrBox");
+  box.innerHTML = "";
+
+  new QRCode(box, {
+    text: payload,
+    width: 1000,
+    height: 1000,
+    correctLevel: QRCode.CorrectLevel.H
+  });
+}
+
+async function pollQr(){
+  try {
+    const params = new URLSearchParams({
+      action: "getCurrentPayload",
+      sessionId: activeSessionId
+    });
+
+    const res = await fetch(apiUrl + "?" + params.toString());
+    const data = await res.json();
+
+    if (!data.ok) {
+      setStatus(data.message || "Server error.");
+      return;
+    }
+
+    if (!data.active) {
+      setStatus("Session ended.");
+      setTimeout(() => window.location.href = "faculty.html", 1200);
+      return;
+    }
+
+    document.getElementById("top").textContent =
+      data.className + " - " + data.lectureType;
+
+    document.getElementById("info").textContent =
+      "Session ID: " + data.sessionId;
+
+    if (data.payload !== lastPayload) {
+      lastPayload = data.payload;
+      drawQr(data.payload);
+      setStatus("QR refreshed: " + new Date().toLocaleTimeString());
+    }
+
+  } catch(e) {
+    setStatus("Network issue. Retrying...");
+  }
+}
+
+document.getElementById("endBtn").onclick = async () => {
+  document.getElementById("endBtn").disabled = true;
+  setStatus("Ending session...");
+
+  try {
+    const params = new URLSearchParams({
+      action: "endSession",
+      username,
+      token,
+      sessionId: activeSessionId
+    });
+
+    const res = await fetch(apiUrl + "?" + params.toString());
+    const data = await res.json();
+
+    setStatus(data.message || "Session ended.");
+  } catch(e) {
+    setStatus("Could not reach server.");
+  }
+
+  sessionStorage.removeItem("att_active_session_id");
+  setTimeout(() => window.location.href = "faculty.html", 1000);
+};
+
+pollQr();
+pollTimer = setInterval(pollQr, 800);
+</script>
+</body>
+</html>
