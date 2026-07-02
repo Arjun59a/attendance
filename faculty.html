@@ -16,18 +16,17 @@ button{border:0;background:#166534;color:white;font-weight:800}
 button.end{background:#991b1b}
 button.logout{background:#334155}
 button:disabled{opacity:.6}
-.status{margin-top:12px;padding:12px;border-radius:8px;display:flex;align-items:center;gap:10px;
-  background:#f8fafc;border:1px solid #e2e8f0}
+.status{margin-top:12px;padding:12px;border-radius:8px;display:flex;align-items:center;gap:10px;background:#f8fafc;border:1px solid #e2e8f0}
 .status.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
 .status.err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
-.spinner{width:16px;height:16px;border:3px solid #cbd5e1;border-top-color:#166534;border-radius:50%;
-  animation:spin .8s linear infinite;display:none;flex-shrink:0}
+.spinner{width:16px;height:16px;border:3px solid #cbd5e1;border-top-color:#166534;border-radius:50%;animation:spin .8s linear infinite;display:none;flex-shrink:0}
 .status.loading .spinner{display:block}
 @keyframes spin{to{transform:rotate(360deg)}}
 #qrBox{background:white;padding:16px;border-radius:12px;display:flex;justify-content:center;margin-top:16px}
 #qrInfo{text-align:center;font-size:1.1rem;margin-top:10px}
 #qrInfo b{color:#166534}
-.who{text-align:center;color:#64748b;font-size:.9rem;margin-top:-4px}
+.who{text-align:center;color:#64748b;font-size:.9rem;margin-top:-4px;margin-bottom:10px}
+.small{font-size:.85rem;color:#64748b;margin-top:8px;text-align:center}
 </style>
 </head>
 <body>
@@ -52,24 +51,28 @@ button:disabled{opacity:.6}
   <span id="statusText">Loading your assigned classes...</span>
 </div>
 
+<div class="small" id="debugText"></div>
 <button id="logoutBtn" class="logout">Logout</button>
 </section>
 </main>
 
 <script>
 const sessionRaw = sessionStorage.getItem("att_faculty_session");
+
 if (!sessionRaw) {
   window.location.href = "login.html";
 }
+
 const mySession = JSON.parse(sessionRaw || "{}");
 const apiUrl = mySession.apiUrl;
 const username = mySession.username;
 const token = mySession.token;
 
-document.getElementById("whoami").textContent = "Logged in as: " + username;
+document.getElementById("whoami").textContent = "Logged in as: " + (username || "Unknown");
 
 const statusBox = document.getElementById("statusBox");
 const statusText = document.getElementById("statusText");
+const debugText = document.getElementById("debugText");
 const selectView = document.getElementById("selectView");
 const qrView = document.getElementById("qrView");
 const assignmentSelect = document.getElementById("assignmentSelect");
@@ -87,58 +90,122 @@ function setStatus(msg, kind, loading=false) {
   statusBox.className = "status" + (kind ? " " + kind : "") + (loading ? " loading" : "");
 }
 
+function normalizeAssignment(a) {
+  return {
+    sessionId: String(
+      a.sessionId ||
+      a.sessionID ||
+      a["sessionId"] ||
+      a["Session ID"] ||
+      a["session ID"] ||
+      a["session id"] ||
+      ""
+    ).trim(),
+
+    className: String(
+      a.className ||
+      a["className"] ||
+      a["Class Name"] ||
+      a["class name"] ||
+      a["Class"] ||
+      a.class ||
+      ""
+    ).trim(),
+
+    lectureType: String(
+      a.lectureType ||
+      a["lectureType"] ||
+      a["Lecture Type"] ||
+      a["lecture type"] ||
+      a.lecture ||
+      "Regular"
+    ).trim() || "Regular"
+  };
+}
+
 async function loadAssignments() {
   setStatus("Loading your assigned classes...", "", true);
+  debugText.textContent = "";
+
+  if (!apiUrl || !username || !token) {
+    setStatus("Login data missing. Please log in again.", "err");
+    sessionStorage.removeItem("att_faculty_session");
+    setTimeout(() => window.location.href = "login.html", 1500);
+    return;
+  }
 
   try {
-    const params = new URLSearchParams({ action:"getAssignments", username, token });
+    const params = new URLSearchParams({
+      action: "getAssignments",
+      username: username,
+      token: token
+    });
+
     const res = await fetch(apiUrl + "?" + params.toString());
     const data = await res.json();
 
     if (!data.ok) {
       setStatus(data.message || "Could not load assignments.", "err");
-      if ((data.message || "").includes("log in")) {
+      if ((data.message || "").toLowerCase().includes("log in") ||
+          (data.message || "").toLowerCase().includes("expired")) {
         sessionStorage.removeItem("att_faculty_session");
         setTimeout(() => window.location.href = "login.html", 1500);
       }
       return;
     }
 
-    assignments = data.assignments || [];
+    assignments = (data.assignments || [])
+      .map(normalizeAssignment)
+      .filter(a => a.sessionId && a.className);
+
     assignmentSelect.innerHTML = "";
 
     if (!assignments.length) {
-      setStatus("No classes are assigned to your account yet. Contact admin.", "err");
+      setStatus("No valid classes assigned. Check FacultyAssignments sheet headers and rows.", "err");
+      debugText.textContent = "Required headers: username, sessionId, className, lectureType";
       startBtn.disabled = true;
       return;
     }
 
     assignments.forEach((a, i) => {
       const opt = document.createElement("option");
-      opt.value = i;
-      opt.textContent = a.className + " — " + a.lectureType + " (" + a.sessionId + ")";
+      opt.value = String(i);
+      opt.textContent = a.className + " - " + a.lectureType + " (" + a.sessionId + ")";
       assignmentSelect.appendChild(opt);
     });
 
     startBtn.disabled = false;
-    setStatus("Ready. Pick a class and tap Start Session.");
+    setStatus("Ready. Pick a class and tap Start Session.", "ok");
   } catch (e) {
-    setStatus("Could not reach the server. Check your connection.", "err");
+    setStatus("Could not reach the server. Check Apps Script URL or deployment.", "err");
+    debugText.textContent = e.message;
   }
 }
 
 startBtn.onclick = async () => {
-  const chosen = assignments[assignmentSelect.value];
-  if (!chosen) return;
+  const chosen = assignments[Number(assignmentSelect.value)];
+
+  if (!chosen || !chosen.sessionId || !chosen.className || !chosen.lectureType) {
+    setStatus("Assignment is missing Session ID, Class Name, or Lecture Type.", "err");
+    debugText.textContent = "Check FacultyAssignments row for this username.";
+    startBtn.disabled = false;
+    return;
+  }
 
   startBtn.disabled = true;
   setStatus("Starting session...", "", true);
+  debugText.textContent = "";
 
   try {
     const params = new URLSearchParams({
-      action:"startSession", username, token,
-      sessionId: chosen.sessionId, className: chosen.className, lectureType: chosen.lectureType
+      action: "startSession",
+      username: username,
+      token: token,
+      sessionId: chosen.sessionId,
+      className: chosen.className,
+      lectureType: chosen.lectureType
     });
+
     const res = await fetch(apiUrl + "?" + params.toString());
     const data = await res.json();
 
@@ -146,33 +213,48 @@ startBtn.onclick = async () => {
       activeSessionId = chosen.sessionId;
       selectView.style.display = "none";
       qrView.style.display = "block";
-      setStatus(data.message, "ok");
+      setStatus(data.message || "Session started.", "ok");
       startQrPolling();
     } else {
       setStatus(data.message || "Could not start session.", "err");
+      debugText.textContent = "Sent: " + chosen.sessionId + " / " + chosen.className + " / " + chosen.lectureType;
       startBtn.disabled = false;
     }
   } catch (e) {
     setStatus("Could not reach the server. Check your connection.", "err");
+    debugText.textContent = e.message;
     startBtn.disabled = false;
   }
 };
 
 endBtn.onclick = async () => {
+  if (!activeSessionId) {
+    setStatus("No active session selected.", "err");
+    return;
+  }
+
   endBtn.disabled = true;
   setStatus("Ending session...", "", true);
 
   try {
-    const params = new URLSearchParams({ action:"endSession", username, token, sessionId: activeSessionId });
+    const params = new URLSearchParams({
+      action: "endSession",
+      username: username,
+      token: token,
+      sessionId: activeSessionId
+    });
+
     const res = await fetch(apiUrl + "?" + params.toString());
     const data = await res.json();
 
     setStatus(data.message || "Session ended.", data.ok ? "ok" : "err");
   } catch (e) {
-    setStatus("Could not reach the server, but stopping QR display.", "err");
+    setStatus("Could not reach the server, but QR display stopped.", "err");
+    debugText.textContent = e.message;
   }
 
   stopQrPolling();
+  activeSessionId = "";
   qrView.style.display = "none";
   selectView.style.display = "block";
   startBtn.disabled = false;
@@ -195,27 +277,46 @@ function stopQrPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
   lastPayload = "";
+  document.getElementById("qrBox").innerHTML = "";
+  document.getElementById("qrInfo").innerHTML = "";
 }
 
 async function pollQr() {
+  if (!activeSessionId) return;
+
   try {
-    const params = new URLSearchParams({ action:"getCurrentPayload", sessionId: activeSessionId });
+    const params = new URLSearchParams({
+      action: "getCurrentPayload",
+      sessionId: activeSessionId
+    });
+
     const res = await fetch(apiUrl + "?" + params.toString());
     const data = await res.json();
 
     if (data.ok && data.active) {
       document.getElementById("qrInfo").innerHTML =
-        "<b>" + data.lectureType + "</b> — " + data.className + " (" + data.sessionId + ")";
+        "<b>" + data.lectureType + "</b> - " + data.className + " (" + data.sessionId + ")";
 
       if (data.payload !== lastPayload) {
         lastPayload = data.payload;
         const box = document.getElementById("qrBox");
         box.innerHTML = "";
-        new QRCode(box, { text:data.payload, width:260, height:260, correctLevel:QRCode.CorrectLevel.M });
+        new QRCode(box, {
+          text: data.payload,
+          width: 260,
+          height: 260,
+          correctLevel: QRCode.CorrectLevel.M
+        });
       }
+    } else if (data.ok && !data.active) {
+      setStatus("Session is no longer running.", "err");
+      stopQrPolling();
+      qrView.style.display = "none";
+      selectView.style.display = "block";
+      startBtn.disabled = false;
     }
   } catch (e) {
-    // silent — try again next poll
+    // keep polling silently
   }
 }
 
